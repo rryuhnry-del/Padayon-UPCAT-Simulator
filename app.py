@@ -2379,8 +2379,7 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
         for campus in [campus_1, campus_2]:
             recon  = CAMPUS_DATA[campus]["recon"]
             cutoff = CAMPUS_DATA[campus]["cutoff"]
-            st.markdown(f"**{campus}** — Cutoff: {cutoff:.3f} · Recon: {recon:.3f if recon>0 else 'N/A'}")
-            if recon == 0.0:
+st.markdown(f"**{campus}** — Cutoff: {cutoff:.3f} · Recon: {f'{recon:.3f}' if recon > 0 else 'N/A'}")            if recon == 0.0:
                 st.error(f"🚫 {campus}: Absolute no-reconsideration policy. No appeals.")
             elif final_upg <= cutoff:
                 st.success(f"✅ Qualified ({final_upg:.3f} ≤ {cutoff:.3f}). No recon needed.")
