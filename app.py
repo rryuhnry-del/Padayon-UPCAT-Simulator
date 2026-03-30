@@ -736,8 +736,8 @@ with st.sidebar:
         help="aistudio.google.com — free API key")
     gemini_model = st.selectbox("Gemini Model", [
         "gemini-2.5-pro",
-        "gemini-2.0-flash",
-        "gemini-1.5-pro-latest",
+        "gemini-3-flash-preview",
+        "gemini-3.1-pro-preview",
     ], index=0, help="2.5 Pro produces deepest, most accurate items")
 
     st.divider()
