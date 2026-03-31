@@ -492,51 +492,6 @@ section[data-testid="stSidebar"] [data-baseweb="select"] * {{ color: var(--fg0) 
 </style>
 """, unsafe_allow_html=True)
 
-# ── KaTeX: load ONCE with a MutationObserver so it re-renders on Streamlit updates ──
-st.components.v1.html("""
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
-<script>
-(function() {
-  var DELIMITERS = [
-    {left: '$$', right: '$$', display: true},
-    {left: '$',  right: '$',  display: false},
-    {left: '\\\\(', right: '\\\\)', display: false},
-    {left: '\\\\[', right: '\\\\]', display: true}
-  ];
-  var OPTS = {delimiters: DELIMITERS, throwOnError: false, strict: false, trust: true};
-
-  function renderAll() {
-    try {
-      if (window.renderMathInElement && document.body) {
-        renderMathInElement(document.body, OPTS);
-      }
-    } catch(e) {}
-  }
-
-  // Initial render after DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() { setTimeout(renderAll, 200); });
-  } else {
-    setTimeout(renderAll, 200);
-  }
-
-  // Re-render whenever Streamlit updates the DOM
-  var obs = new MutationObserver(function(mutations) {
-    var changed = mutations.some(function(m) {
-      return m.addedNodes.length > 0;
-    });
-    if (changed) { setTimeout(renderAll, 80); }
-  });
-  obs.observe(document.body, {childList: true, subtree: true});
-
-  // Expose globally so inline scripts can call it
-  window.reRenderKaTeX = renderAll;
-})();
-</script>
-""", height=0)
-
 # ==========================================
 # DATA
 # ==========================================
@@ -806,6 +761,14 @@ def build_svg_from_data(chart_data):
 # ==========================================
 # JSON CLEANER — robust, math-safe
 # ==========================================
+# ==========================================
+# JSON CLEANER & MARKDOWN SAFEGUARD
+# ==========================================
+def safe_md(text):
+    """Protects Math backslashes from being eaten by Streamlit's parser"""
+    if not text: return ""
+    return str(text).replace('\\', '\\\\')
+
 def clean_json(raw: str) -> str:
     s = raw.strip()
     # Remove markdown fences
@@ -1367,18 +1330,17 @@ if st.session_state.get('test_data') and not st.session_state.get('submitted'):
                     except Exception:
                         pass
 
-                # ── QUESTION TEXT — rendered via st.markdown for KaTeX ──
-                st.markdown(f'<div class="q-stem">{qtext}</div>', unsafe_allow_html=True)
+                # ── QUESTION TEXT — native Streamlit markdown for math ──
+                st.markdown(safe_md(qtext))
                 st.markdown('</div>', unsafe_allow_html=True)
 
                 # ── OPTIONS — use st.radio, pass option text as plain string ──
                 opts = q.get('options', {})
-                # Build choice strings for radio — KaTeX will render $ delimiters
-                choices = [
-                    f"A)  {opts.get('A','')}",
-                    f"B)  {opts.get('B','')}",
-                    f"C)  {opts.get('C','')}",
-                    f"D)  {opts.get('D','')}",
+                choices =[
+                    f"A)  {safe_md(opts.get('A',''))}",
+                    f"B)  {safe_md(opts.get('B',''))}",
+                    f"C)  {safe_md(opts.get('C',''))}",
+                    f"D)  {safe_md(opts.get('D',''))}",
                 ]
                 choice = st.radio(
                     f"Q{key}{inum}",
@@ -1754,11 +1716,11 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
                     comp = q.get('competency', q.get('topic',''))[:55]
                     ss   = f"Chose {u} → Correct: {c}" if u and u!=c else ("✅ Correct" if u==c else "⚪ Skipped")
                     with st.expander(f"MTH {inum:02d} · {comp} · {ss}"):
-                        # Question with LaTeX via st.markdown
-                        st.markdown(f"<div class='q-stem' style='background:var(--bg2);border-radius:var(--r);padding:12px 16px;margin-bottom:10px;'>{q.get('question_text','')}</div>", unsafe_allow_html=True)
+                      # Question with native LaTeX
+                        st.markdown(f"**Question:**\n\n{safe_md(q.get('question_text',''))}")
                         opts = q.get('options', {})
                         for lt in ['A','B','C','D']:
-                            txt = f"**{lt})** {opts.get(lt,'')}"
+                            txt = f"**{lt})** {safe_md(opts.get(lt,''))}"
                             if lt == c:
                                 st.markdown(f'<div class="ir-c">{txt}</div>', unsafe_allow_html=True)
                             elif lt == u:
@@ -1774,8 +1736,8 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
                                 st.warning(str(err))
                         if show_sol or u == c:
                             sol = q.get('solution','')
-                            if sol: st.info(f"**📐 Solution:**\n\n{sol}")
-                            kc = q.get('key_concept','')
+if sol: st.info(f"**📐 Solution:**\n\n{safe_md(sol)}")
+kc = q.get('key_concept','')
                             if kc: st.caption(f"💡 {kc}")
                             cm = q.get('common_mistake','')
                             if cm: st.caption(f"⚠️ Common mistake: {cm}")
@@ -1818,10 +1780,10 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
                                 svg = build_svg_from_data(cd)
                                 if svg: st.markdown(f'<div class="chart-wrap">{svg}</div>', unsafe_allow_html=True)
                             except Exception: pass
-                        st.markdown(f"<div class='q-stem' style='background:var(--bg2);border-radius:var(--r);padding:12px 16px;margin-bottom:10px;'>{q.get('question_text','')}</div>", unsafe_allow_html=True)
+                       st.markdown(f"**Question:**\n\n{safe_md(q.get('question_text',''))}")
                         opts = q.get('options', {})
                         for lt in ['A','B','C','D']:
-                            txt = f"**{lt})** {opts.get(lt,'')}"
+                            txt = f"**{lt})** {safe_md(opts.get(lt,''))}"
                             if lt == c:
                                 st.markdown(f'<div class="ir-c">{txt}</div>', unsafe_allow_html=True)
                             elif lt == u:
@@ -1835,8 +1797,8 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
                                 st.warning(f"**Why {u} is wrong ({err.get('type','')}):** {err.get('error','')}")
                         if show_sol or u == c:
                             sol = q.get('solution','')
-                            if sol: st.info(f"**🔬 Explanation:**\n\n{sol}")
-                            pr = q.get('passage_reference','')
+if sol: st.info(f"**🔬 Explanation:**\n\n{safe_md(sol)}")
+pr = q.get('passage_reference','')
                             if pr: st.caption(f"📍 Key evidence: {pr}")
                             kc = q.get('key_concept','')
                             if kc: st.caption(f"💡 {kc}")
