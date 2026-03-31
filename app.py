@@ -380,8 +380,8 @@ with st.sidebar:
     api_key = st.text_input("Gemini API Key", type="password", placeholder="AIza...", help="aistudio.google.com — free")
     gemini_model = st.selectbox("Model", [
         "gemini-2.5-pro",
-        "gemini-2.0-flash",
-        "gemini-1.5-pro-latest",
+        "gemini-3-flash-preview",
+        "gemini-3.1-pro-preview",
     ], index=0)
 
     st.markdown('<div class="sec-title" style="margin:14px 0 10px;padding-left:12px;font-size:0.6rem;">♿ Display</div>', unsafe_allow_html=True)
