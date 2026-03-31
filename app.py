@@ -1071,29 +1071,26 @@ def generate_line_chart_svg(x_vals, y_series, title="", width=500, height=280):
 # JSON & LATEX HELPERS
 # ==========================================
 def clean_json(raw: str) -> str:
-    """Super-Sanitizer: Engineered for Math, Science, and LaTeX JSON escapes"""
+    """Ultimate Math-Safe JSON Parser (Fixed Autoimmune Bug)"""
     import re
     s = raw.strip()
     
     # 1. Remove Markdown Fences
     s = re.sub(r'^```json\s*|```JSON\s*|```$', '', s, flags=re.IGNORECASE | re.MULTILINE)
     
-    # 2. Fix the "Invalid \escape" by escaping raw backslashes used in Math/LaTeX
-    # This is the 'vaccine' for your Math LaTeX error
-    s = s.replace('\\', '\\\\') 
-    s = s.replace('\\\\"', '\\"')  # Restore escaped quotes
-    s = s.replace('\\\\n', '\\n')  # Restore newlines
-    s = s.replace('\\\\t', '\\t')  # Restore tabs
-    
-    # 3. Aggressive repair for unescaped newlines inside strings
-    s = re.sub(r'([^\\])\n', r'\1\\n', s)
-    
-    # 4. Extract the JSON core
+    # 2. Extract the JSON core FIRST! (This protects the structure)
     first = s.find("{")
     last = s.rfind("}")
     if first != -1 and last != -1:
         s = s[first:last+1]
         
+    # 3. The Math-LaTeX Vaccine (Safe Version)
+    # Pinoprotektahan ang mga formulas (\frac, \sqrt) nang hindi sinisira ang JSON
+    s = s.replace('\\', '\\\\') 
+    s = s.replace('\\\\"', '\\"')  # Restore escaped quotes
+    s = s.replace('\\\\n', '\\n')  # Restore explicit newlines
+    s = s.replace('\\\\t', '\\t')  # Restore explicit tabs
+    
     return s.strip()
 
 def render_math_text(text: str) -> str:
