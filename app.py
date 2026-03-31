@@ -1758,7 +1758,7 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
             ]:
                 if not subset: continue
                 st.markdown(f"#### {lbl}")
-                for q in subset:
+                for q in items_subset:
                     inum = q['item_number']
                     u    = u_sci.get(inum)
                     c    = q.get('correct_answer')
@@ -1780,21 +1780,24 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
                                 svg = build_svg_from_data(cd)
                                 if svg: st.markdown(f'<div class="chart-wrap">{svg}</div>', unsafe_allow_html=True)
                             except Exception: pass
-                       st.markdown(f"**Question:**\n\n{safe_md(q.get('question_text',''))}")
+                        
+                        st.markdown(f"**Question:**\n\n{safe_md(q.get('question_text',''))}")
                         opts = q.get('options', {})
                         for lt in ['A','B','C','D']:
                             txt = f"**{lt})** {safe_md(opts.get(lt,''))}"
                             if lt == c:
-                                st.markdown(f'<div class="ir-c">{txt}</div>', unsafe_allow_html=True)
+                                st.markdown(f'<div class="ir-c">✅ {txt}</div>', unsafe_allow_html=True)
                             elif lt == u:
-                                st.markdown(f'<div class="ir-w">{txt} ← Your answer</div>', unsafe_allow_html=True)
+                                st.markdown(f'<div class="ir-w">❌ {txt} ← Your answer</div>', unsafe_allow_html=True)
                             else:
                                 st.markdown(f'<div class="ir-o">{txt}</div>', unsafe_allow_html=True)
+                        
                         da = q.get('distractor_analysis', {})
                         if da and u and u in da and u != c:
                             err = da[u]
                             if isinstance(err, dict):
                                 st.warning(f"**Why {u} is wrong ({err.get('type','')}):** {err.get('error','')}")
+                        
                         if show_sol or u == c:
                             sol = q.get('solution','')
                             if sol: st.info(f"**🔬 Explanation:**\n\n{safe_md(sol)}")
