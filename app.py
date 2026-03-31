@@ -483,24 +483,25 @@ def build_chart(cd):
 # JSON CLEANER — THE MATH VACCINE
 # ==========================================
 def clean_json(raw: str) -> str:
-    """Extract valid JSON and sanitize LaTeX backslashes."""
+    """High-Precision JSON Extractor for LaTeX and Math Symbols"""
+    import re
     s = raw.strip()
-    # Remove markdown code fences only
-    s = re.sub(r'^```(?:json)?\s*\n?', '', s, flags=re.IGNORECASE)
-    s = re.sub(r'\n?```\s*$', '', s)
-    s = s.strip()
+    # 1. Remove Markdown fences
+    s = re.sub(r'^```(?:json)?\s*', '', s, flags=re.IGNORECASE)
+    s = re.sub(r'\s*```$', '', s)
     
-    # Find outermost object
-    first, last = s.find('{'), s.rfind('}')
-    if first != -1 and last != -1:
-        s = s[first:last+1]
+    # 2. Extract outermost { }
+    start = s.find('{')
+    end = s.rfind('}')
+    if start != -1 and end != -1:
+        s = s[start:end+1]
         
-    # THE MATH VACCINE: Escape raw backslashes so JSON parser doesn't crash on \frac or \sqrt
+    # 3. CRITICAL: Protect backslashes for Math/LaTeX
+    # This prevents the parser from eating the '\' in \frac
     s = s.replace('\\', '\\\\')
-    s = s.replace('\\\\"', '\\"')  # Restore legitimate JSON quote escapes
-    s = s.replace('\\\\n', '\\n')  # Restore legitimate JSON newlines
-    s = s.replace('\\\\t', '\\t')  # Restore legitimate JSON tabs
-    
+    # Restore standard JSON escapes that we accidentally doubled
+    s = s.replace('\\\\"', '\\"')
+    s = s.replace('\\\\n', '\\n')
     return s.strip()
 
 def esc_html(s: str) -> str:
@@ -572,6 +573,10 @@ UPCAT SCIENCE STYLE:
 - No heavy stoichiometry calculations — conceptual chemistry only
 - Disciplines: Biology ~35%, Earth Science ~25%, Chemistry ~22%, Physics ~18%
 - JHS topics (~70%) dominate; SHS topics (~30%) appear mainly in passages
+
+- CRITICAL: Never omit curly braces in LaTeX. Always write \frac{a}{b}, never \fracab.
+- Always put a space after a LaTeX command if it's followed by a variable. 
+- Example: \cos (5x) is better than \cos(5x).
 
 OUTPUT: Return ONLY valid JSON. No markdown fences. No text before or after."""
 
@@ -925,7 +930,10 @@ if st.session_state.get('test_data') and not st.session_state.get('submitted'):
 
                 # Question text — use native st.markdown (KaTeX auto-renders $...$)
                 st.markdown(f'<div style="font-family:var(--font-body);font-size:var(--fs);line-height:1.9;color:var(--fg0);margin:0 0 14px;">', unsafe_allow_html=True)
-                st.markdown(qtext)  # Native markdown + KaTeX via MutationObserver
+# ── QUESTION TEXT (Math-Safe Rendering) ──
+                # We wrap the text to ensure Streamlit treats backslashes literally
+                st.write(qtext) 
+                st.markdown("---")
                 st.markdown('</div>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
