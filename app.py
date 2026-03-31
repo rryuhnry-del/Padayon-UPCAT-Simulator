@@ -4,253 +4,207 @@ import json
 import time
 import math
 import numpy as np
+import re
+import base64
+import io
 
 # ==========================================
-# 🛡️ SESSION STATE INIT
+# SESSION STATE INIT
 # ==========================================
 defaults = {
     'user_answers_math': {}, 'user_answers_sci': {},
     'submitted': False, 'test_data': None,
-    'generation_error': None,
     'flagged_items': set(),
-    'font_size': 'medium', 'high_contrast': False,
+    'font_size': 'medium',
     'active_subtest': 'math',
-    'math_started': False, 'sci_started': False,
-    'math_submitted': False, 'sci_submitted': False,
     'math_start_time': None, 'sci_start_time': None,
     'elapsed_math': 0, 'elapsed_sci': 0,
-    'custom_competencies_math': '', 'custom_competencies_sci': '',
-    'use_custom_math': False, 'use_custom_sci': False,
+    'competencies_math': '', 'competencies_sci': '',
+    'generation_log': [],
 }
 for key, val in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = val
 
 # ==========================================
-# 🏛️ PAGE CONFIG
+# PAGE CONFIG
 # ==========================================
 st.set_page_config(
-    page_title="Padayon! UPCAT Agham at Matematika",
-    page_icon="🧮",
+    page_title="Padayon! UPCAT 2026 Simulator",
+    page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-FONT_SIZES = {'small': '0.85rem', 'medium': '1.0rem', 'large': '1.125rem', 'x-large': '1.25rem'}
-fs = FONT_SIZES.get(st.session_state.get('font_size', 'medium'), '1.0rem')
+FONT_SIZES = {'small': '0.85rem', 'medium': '1rem', 'large': '1.1rem', 'x-large': '1.2rem'}
+fs = FONT_SIZES.get(st.session_state.get('font_size', 'medium'), '1rem')
 
 # ==========================================
-# 🎨 DARK MODE CSS (ONLY)
+# CSS — March 2026 Edition
 # ==========================================
 st.markdown(f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Crimson+Pro:ital,wght@0,400;0,600;0,700;0,900;1,400;1,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;0,700;1,400;1,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {{
-  /* Core Dark Palette */
-  --bg-base:      #0d1117;
-  --bg-surface:   #161b22;
-  --bg-elevated:  #1c2333;
-  --bg-overlay:   #21262d;
-  --bg-subtle:    #30363d;
+  --bg0: #070b12;
+  --bg1: #0e1520;
+  --bg2: #141d2e;
+  --bg3: #1a2540;
+  --bg4: #223050;
 
-  /* Math accent: Indigo/Blue */
-  --math-primary: #58a6ff;
-  --math-dim:     #1f3352;
-  --math-glow:    rgba(88,166,255,0.12);
+  --blue:   #4d9fff;
+  --teal:   #2dd4bf;
+  --green:  #34d399;
+  --amber:  #fbbf24;
+  --red:    #f87171;
+  --purple: #a78bfa;
 
-  /* Science accent: Teal/Cyan */
-  --sci-primary:  #39d0c5;
-  --sci-dim:      #0d2e2c;
-  --sci-glow:     rgba(57,208,197,0.12);
+  --blue-dim:  rgba(77,159,255,0.10);
+  --teal-dim:  rgba(45,212,191,0.10);
+  --green-dim: rgba(52,211,153,0.10);
+  --amber-dim: rgba(251,191,36,0.10);
+  --red-dim:   rgba(248,113,113,0.10);
 
-  /* Status */
-  --green:        #3fb950;
-  --green-dim:    #0d2d1a;
-  --red:          #f85149;
-  --red-dim:      #2d1b1b;
-  --amber:        #d29922;
-  --amber-dim:    #2d2209;
-  --purple:       #bc8cff;
+  --fg0: #f0f4f8;
+  --fg1: #9aaabb;
+  --fg2: #5a6a7a;
+  --fg3: #2e3d50;
 
-  /* Typography */
-  --fg-primary:   #e6edf3;
-  --fg-secondary: #8b949e;
-  --fg-muted:     #484f58;
-  --fg-on-dark:   #ffffff;
+  --border: rgba(255,255,255,0.06);
+  --border2: rgba(255,255,255,0.12);
 
-  /* Borders */
-  --border:       #30363d;
-  --border-mid:   #21262d;
-  --border-subtle:#161b22;
+  --r: 8px;
+  --r2: 12px;
+  --r3: 16px;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3);
-  --shadow-lg: 0 12px 32px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.4);
+  --font-display: 'Syne', sans-serif;
+  --font-body:    'Source Serif 4', Georgia, serif;
+  --font-mono:    'IBM Plex Mono', monospace;
+  --fs: {fs};
 
-  /* Radii */
-  --r-sm: 6px;
-  --r:    10px;
-  --r-lg: 14px;
-  --r-xl: 20px;
-
-  /* Fonts */
-  --font-display: 'Crimson Pro', Georgia, serif;
-  --font-body:    'Inter', -apple-system, sans-serif;
-  --font-mono:    'JetBrains Mono', 'Courier New', monospace;
-  --base-fs:      {fs};
-
-  --transition: 0.18s cubic-bezier(0.4,0,0.2,1);
+  --shadow: 0 4px 24px rgba(0,0,0,0.5);
+  --shadow2: 0 8px 40px rgba(0,0,0,0.7);
+  --t: 0.2s cubic-bezier(0.4,0,0.2,1);
 }}
 
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
-/* ── Streamlit overrides ── */
 .stApp, body {{
-  background: var(--bg-base) !important;
-  color: var(--fg-primary) !important;
+  background: var(--bg0) !important;
+  color: var(--fg0) !important;
   font-family: var(--font-body) !important;
-  font-size: var(--base-fs) !important;
+  font-size: var(--fs) !important;
 }}
+
 #MainMenu, footer, header {{ visibility: hidden; }}
 .block-container {{
-  padding-top: 1rem !important;
-  padding-bottom: 5rem !important;
-  max-width: 1380px !important;
+  padding-top: 1.5rem !important;
+  padding-bottom: 6rem !important;
+  max-width: 1400px !important;
 }}
 
 h1,h2,h3,h4,h5,h6 {{
   font-family: var(--font-display) !important;
-  color: var(--fg-primary) !important;
-  font-weight: 700 !important;
-}}
-p, li, span {{ font-family: var(--font-body); line-height: 1.7; }}
-.stMarkdown, .stText {{ color: var(--fg-primary) !important; }}
-
-*:focus-visible {{
-  outline: 2px solid var(--math-primary) !important;
-  outline-offset: 2px !important;
+  color: var(--fg0) !important;
+  letter-spacing: -0.02em !important;
 }}
 
 /* ── Sidebar ── */
 section[data-testid="stSidebar"] {{
-  background: var(--bg-surface) !important;
+  background: var(--bg1) !important;
   border-right: 1px solid var(--border) !important;
 }}
-section[data-testid="stSidebar"] > div {{ padding: 0 !important; }}
-section[data-testid="stSidebar"] * {{ color: var(--fg-secondary) !important; }}
+section[data-testid="stSidebar"] * {{ color: var(--fg1) !important; }}
 section[data-testid="stSidebar"] h3,
 section[data-testid="stSidebar"] h4,
 section[data-testid="stSidebar"] strong,
 section[data-testid="stSidebar"] label {{
-  color: var(--fg-primary) !important;
+  color: var(--fg0) !important;
+  font-family: var(--font-display) !important;
 }}
 section[data-testid="stSidebar"] input,
 section[data-testid="stSidebar"] select,
 section[data-testid="stSidebar"] textarea {{
-  background: var(--bg-elevated) !important;
-  border: 1px solid var(--border) !important;
-  color: var(--fg-primary) !important;
-  border-radius: var(--r-sm) !important;
-}}
-section[data-testid="stSidebar"] hr {{
-  border-color: var(--border) !important;
-  margin: 14px 0 !important;
+  background: var(--bg2) !important;
+  border: 1px solid var(--border2) !important;
+  color: var(--fg0) !important;
+  border-radius: var(--r) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 0.82rem !important;
 }}
 section[data-testid="stSidebar"] [data-baseweb="select"] > div {{
-  background: var(--bg-elevated) !important;
-  border-color: var(--border) !important;
-  color: var(--fg-primary) !important;
+  background: var(--bg2) !important;
+  border-color: var(--border2) !important;
+  color: var(--fg0) !important;
 }}
 section[data-testid="stSidebar"] [data-baseweb="select"] * {{
-  color: var(--fg-primary) !important;
-  background: var(--bg-elevated) !important;
+  color: var(--fg0) !important;
+  background: var(--bg2) !important;
 }}
-
-.sb-brand {{
-  background: linear-gradient(135deg, var(--bg-elevated), var(--bg-overlay));
-  border-bottom: 1px solid var(--border);
-  padding: 24px 20px 18px;
-  text-align: center;
-  margin-bottom: 2px;
-}}
-.sb-brand img {{ filter: drop-shadow(0 2px 12px rgba(88,166,255,0.35)); }}
-.sb-brand .sb-title {{
-  font-family: var(--font-display) !important;
-  font-size: 0.95rem; font-style: italic;
-  color: var(--fg-primary) !important;
-  margin-top: 10px; display: block;
-}}
-.sb-brand .sb-sub {{
-  font-family: var(--font-mono);
-  font-size: 0.56rem; letter-spacing: 0.18em;
-  color: var(--fg-muted) !important;
-  text-transform: uppercase; margin-top: 5px;
-}}
-.sb-section {{
-  font-family: var(--font-mono) !important;
-  font-size: 0.58rem !important;
-  letter-spacing: 0.2em !important;
-  text-transform: uppercase !important;
-  color: var(--fg-muted) !important;
-  display: block; padding: 14px 18px 6px;
-  border-top: 1px solid var(--border-mid);
-  margin-top: 6px;
+[data-baseweb="popover"] * {{
+  background: var(--bg3) !important;
+  color: var(--fg0) !important;
+  border-color: var(--border2) !important;
 }}
 
 /* ── Buttons ── */
 .stButton > button {{
-  font-family: var(--font-body) !important;
-  font-weight: 600 !important;
-  font-size: 0.875rem !important;
-  border-radius: var(--r-sm) !important;
-  transition: all var(--transition) !important;
-  min-height: 40px !important;
-  letter-spacing: 0.01em !important;
+  font-family: var(--font-display) !important;
+  font-weight: 700 !important;
+  font-size: 0.82rem !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+  border-radius: var(--r) !important;
+  transition: all var(--t) !important;
+  min-height: 42px !important;
 }}
 .stButton > button[kind="primary"] {{
-  background: linear-gradient(135deg, #1d4ed8, #2563eb) !important;
+  background: linear-gradient(135deg, #1a56db 0%, var(--blue) 100%) !important;
   border: none !important;
   color: #fff !important;
-  box-shadow: 0 0 0 1px rgba(88,166,255,0.2), 0 4px 12px rgba(29,78,216,0.4) !important;
+  box-shadow: 0 0 0 1px rgba(77,159,255,0.3), 0 4px 16px rgba(26,86,219,0.5) !important;
 }}
 .stButton > button[kind="primary"]:hover {{
-  background: linear-gradient(135deg, #2563eb, #3b82f6) !important;
-  box-shadow: 0 0 0 1px rgba(88,166,255,0.35), 0 8px 20px rgba(29,78,216,0.5) !important;
-  transform: translateY(-1px) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 0 0 1px rgba(77,159,255,0.5), 0 8px 24px rgba(26,86,219,0.6) !important;
 }}
 .stButton > button[kind="secondary"] {{
-  background: var(--bg-elevated) !important;
-  border: 1px solid var(--border) !important;
-  color: var(--fg-primary) !important;
+  background: var(--bg2) !important;
+  border: 1px solid var(--border2) !important;
+  color: var(--fg1) !important;
 }}
 .stButton > button[kind="secondary"]:hover {{
-  background: var(--bg-overlay) !important;
-  border-color: var(--math-primary) !important;
+  background: var(--bg3) !important;
+  border-color: var(--blue) !important;
+  color: var(--fg0) !important;
 }}
 
 /* ── Tabs ── */
 .stTabs [data-baseweb="tab-list"] {{
-  gap: 2px; background: var(--bg-surface);
-  border-radius: var(--r); padding: 3px;
+  gap: 2px;
+  background: var(--bg1);
   border: 1px solid var(--border) !important;
+  border-radius: var(--r2);
+  padding: 4px;
   flex-wrap: wrap;
 }}
 .stTabs [data-baseweb="tab"] {{
-  font-family: var(--font-body) !important;
-  font-size: 0.8rem !important; font-weight: 500 !important;
-  padding: 8px 14px !important;
-  border-radius: var(--r-sm) !important;
+  font-family: var(--font-display) !important;
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  padding: 7px 14px !important;
+  border-radius: var(--r) !important;
   background: transparent !important;
-  color: var(--fg-secondary) !important;
+  color: var(--fg2) !important;
   border: none !important;
-  transition: all var(--transition) !important;
+  transition: all var(--t) !important;
 }}
 .stTabs [aria-selected="true"] {{
-  background: var(--bg-elevated) !important;
-  color: var(--math-primary) !important;
-  box-shadow: var(--shadow-sm) !important;
+  background: var(--bg3) !important;
+  color: var(--blue) !important;
 }}
 
 /* ── Radio (answer choices) ── */
@@ -259,694 +213,613 @@ section[data-testid="stSidebar"] [data-baseweb="select"] * {{
 .stRadio > div {{
   display: flex !important;
   flex-direction: column !important;
-  gap: 4px !important;
+  gap: 6px !important;
 }}
 .stRadio > div > label {{
-  background: var(--bg-elevated) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--r-sm) !important;
-  padding: 10px 14px !important;
+  background: var(--bg2) !important;
+  border: 1px solid var(--border2) !important;
+  border-radius: var(--r) !important;
+  padding: 12px 16px !important;
   cursor: pointer !important;
-  transition: all var(--transition) !important;
+  transition: all var(--t) !important;
   font-family: var(--font-body) !important;
-  font-size: var(--base-fs) !important;
-  line-height: 1.65 !important;
-  color: var(--fg-primary) !important;
+  font-size: var(--fs) !important;
+  line-height: 1.7 !important;
+  color: var(--fg0) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
 }}
 .stRadio > div > label:hover {{
-  border-color: var(--math-primary) !important;
-  background: var(--math-glow) !important;
-  transform: translateX(3px) !important;
+  border-color: var(--blue) !important;
+  background: var(--blue-dim) !important;
+  transform: translateX(4px) !important;
 }}
 .stRadio > div > label[data-checked="true"] {{
-  border-color: var(--green) !important;
-  background: var(--green-dim) !important;
-  color: #3fb950 !important;
+  border-color: var(--blue) !important;
+  background: var(--blue-dim) !important;
 }}
 
 /* ── Expanders ── */
 .streamlit-expanderHeader {{
-  background: var(--bg-elevated) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--r-sm) !important;
-  color: var(--fg-primary) !important;
-  font-family: var(--font-body) !important;
-  font-size: 0.875rem !important;
-  font-weight: 500 !important;
+  background: var(--bg2) !important;
+  border: 1px solid var(--border2) !important;
+  border-radius: var(--r) !important;
+  color: var(--fg0) !important;
+  font-family: var(--font-display) !important;
+  font-size: 0.82rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
   min-height: 44px !important;
   padding: 0 14px !important;
 }}
 .streamlit-expanderContent {{
-  background: var(--bg-surface) !important;
+  background: var(--bg1) !important;
   border: 1px solid var(--border) !important;
   border-top: none !important;
-  border-radius: 0 0 var(--r-sm) var(--r-sm) !important;
-  padding: 14px !important;
+  border-radius: 0 0 var(--r) var(--r) !important;
+  padding: 16px !important;
 }}
 
-/* ── Alert / info boxes ── */
+/* ── Alerts ── */
 .stAlert {{
-  background: var(--bg-elevated) !important;
+  background: var(--bg2) !important;
   border: 1px solid var(--border) !important;
-  border-radius: var(--r-sm) !important;
-  color: var(--fg-primary) !important;
+  border-radius: var(--r) !important;
+  color: var(--fg0) !important;
+  font-family: var(--font-body) !important;
 }}
 
 /* ── Select / Number ── */
 .stSelectbox > div > div,
 .stNumberInput > div > div > input {{
-  background: var(--bg-elevated) !important;
-  border-color: var(--border) !important;
-  color: var(--fg-primary) !important;
-  border-radius: var(--r-sm) !important;
-}}
-[data-baseweb="popover"] * {{
-  background: var(--bg-overlay) !important;
-  color: var(--fg-primary) !important;
-  border-color: var(--border) !important;
+  background: var(--bg2) !important;
+  border-color: var(--border2) !important;
+  color: var(--fg0) !important;
+  border-radius: var(--r) !important;
+  font-family: var(--font-mono) !important;
 }}
 
 /* ── Metric ── */
 [data-testid="metric-container"] {{
-  background: var(--bg-elevated) !important;
+  background: var(--bg2) !important;
   border: 1px solid var(--border) !important;
-  border-radius: var(--r) !important;
-  padding: 14px !important;
+  border-radius: var(--r2) !important;
+  padding: 16px !important;
 }}
 [data-testid="metric-container"] label {{
-  color: var(--fg-secondary) !important;
-  font-size: 0.75rem !important;
+  color: var(--fg2) !important;
+  font-size: 0.72rem !important;
+  font-family: var(--font-display) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.08em !important;
 }}
 [data-testid="metric-container"] [data-testid="stMetricValue"] {{
-  color: var(--math-primary) !important;
+  color: var(--blue) !important;
   font-family: var(--font-display) !important;
+  font-size: 1.6rem !important;
 }}
 
 /* ── Progress ── */
 [data-testid="stProgress"] > div > div {{
-  background: var(--bg-subtle) !important;
+  background: var(--bg3) !important;
   border-radius: 4px;
 }}
 [data-testid="stProgress"] > div > div > div {{
-  background: linear-gradient(90deg, var(--math-primary), var(--sci-primary)) !important;
+  background: linear-gradient(90deg, var(--blue), var(--teal)) !important;
   border-radius: 4px;
+}}
+
+/* ── Textarea ── */
+.stTextArea textarea {{
+  background: var(--bg2) !important;
+  border: 1px solid var(--border2) !important;
+  color: var(--fg0) !important;
+  border-radius: var(--r) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 0.82rem !important;
+  line-height: 1.7 !important;
+}}
+.stTextArea textarea:focus {{
+  border-color: var(--blue) !important;
+  box-shadow: 0 0 0 2px rgba(77,159,255,0.2) !important;
+}}
+
+/* ── Checkbox ── */
+.stCheckbox label span {{
+  color: var(--fg1) !important;
+  font-family: var(--font-display) !important;
+  font-size: 0.82rem !important;
 }}
 
 /* ==========================================
    CUSTOM COMPONENTS
    ========================================== */
 
-/* ── Hero ── */
-.hero-shell {{
-  position: relative; border-radius: var(--r-xl);
-  overflow: hidden; margin-bottom: 20px;
-  box-shadow: var(--shadow-lg);
-  border: 1px solid var(--border);
+.hero {{
+  position: relative;
+  background: linear-gradient(145deg, #070b12 0%, #0c1628 50%, #071420 100%);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  overflow: hidden;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow2);
 }}
-.hero-bg {{
+.hero-noise {{
   position: absolute; inset: 0;
-  background: linear-gradient(135deg,
-    #060d1a 0%, #0b1829 35%,
-    #0a2040 65%, #081e3c 100%);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.025'/%3E%3C/svg%3E");
+  opacity: 0.4;
 }}
-.hero-grid {{
-  position: absolute; inset: 0; opacity: 0.025;
-  background-image:
-    linear-gradient(rgba(255,255,255,1) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px);
-  background-size: 36px 36px;
+.hero-glow-l {{
+  position: absolute; width: 500px; height: 500px;
+  border-radius: 50%; top: -150px; left: -100px;
+  background: radial-gradient(circle, rgba(77,159,255,0.08) 0%, transparent 70%);
+  pointer-events: none;
 }}
-.hero-glow-math {{
+.hero-glow-r {{
   position: absolute; width: 400px; height: 400px;
-  border-radius: 50%; top: -100px; right: -50px;
-  background: radial-gradient(circle, rgba(88,166,255,0.12) 0%, transparent 70%);
-}}
-.hero-glow-sci {{
-  position: absolute; width: 300px; height: 300px;
-  border-radius: 50%; bottom: -80px; left: 10%;
-  background: radial-gradient(circle, rgba(57,208,197,0.09) 0%, transparent 70%);
+  border-radius: 50%; bottom: -100px; right: -50px;
+  background: radial-gradient(circle, rgba(45,212,191,0.07) 0%, transparent 70%);
+  pointer-events: none;
 }}
 .hero-inner {{
-  position: relative; z-index: 2; padding: 42px 56px;
+  position: relative; z-index: 2;
+  padding: 48px 56px 40px;
 }}
-.hero-pill {{
-  display: inline-flex; align-items: center; gap: 6px;
-  background: rgba(88,166,255,0.1);
-  border: 1px solid rgba(88,166,255,0.25);
-  color: var(--math-primary) !important;
+.hero-eyebrow {{
   font-family: var(--font-mono);
-  font-size: 0.62rem; font-weight: 600;
-  letter-spacing: 0.14em; text-transform: uppercase;
+  font-size: 0.6rem; font-weight: 600;
+  letter-spacing: 0.25em; text-transform: uppercase;
+  color: var(--blue);
+  background: rgba(77,159,255,0.1);
+  border: 1px solid rgba(77,159,255,0.2);
   padding: 4px 12px; border-radius: 20px;
-  margin-bottom: 16px; width: fit-content;
+  display: inline-block; margin-bottom: 20px;
 }}
 .hero-title {{
   font-family: var(--font-display) !important;
-  font-size: clamp(1.8rem, 3.5vw, 3rem) !important;
-  font-weight: 900 !important;
-  color: var(--fg-on-dark) !important;
-  line-height: 1.08 !important;
-  margin-bottom: 12px !important;
-  letter-spacing: -0.025em;
+  font-size: clamp(2rem, 4vw, 3.4rem) !important;
+  font-weight: 800 !important;
+  line-height: 1.05 !important;
+  letter-spacing: -0.03em !important;
+  color: #fff !important;
+  margin-bottom: 16px !important;
 }}
-.hero-title em {{ font-style: italic; color: var(--math-primary) !important; }}
+.hero-title .accent {{ color: var(--blue); }}
+.hero-title .accent2 {{ color: var(--teal); }}
 .hero-sub {{
-  font-family: var(--font-body); font-size: 0.88rem;
-  color: rgba(255,255,255,0.5); line-height: 1.75;
-  max-width: 600px;
+  font-family: var(--font-body);
+  font-size: 0.9rem; line-height: 1.8;
+  color: rgba(255,255,255,0.45);
+  max-width: 640px; margin-bottom: 28px;
 }}
-.hero-divider {{
-  height: 1px; background: rgba(255,255,255,0.07);
-  margin: 22px 0;
+.hero-rule {{
+  height: 1px;
+  background: linear-gradient(90deg, rgba(77,159,255,0.3), transparent);
+  margin-bottom: 24px;
 }}
 .hero-stats {{
-  display: flex; gap: 32px; flex-wrap: wrap;
+  display: flex; gap: 36px; flex-wrap: wrap;
 }}
-.h-stat-num {{
-  font-family: var(--font-display); font-size: 1.65rem;
-  font-weight: 900; color: var(--math-primary); line-height: 1;
+.hs-num {{
+  font-family: var(--font-display); font-size: 1.8rem;
+  font-weight: 800; color: var(--blue); line-height: 1;
 }}
-.h-stat-lbl {{
-  font-family: var(--font-mono); font-size: 0.60rem;
-  color: rgba(255,255,255,0.35); text-transform: uppercase;
-  letter-spacing: 0.1em; margin-top: 3px;
-}}
-
-/* ── Notice boxes ── */
-.notice {{
-  display: flex; gap: 10px; align-items: flex-start;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--math-primary);
-  border-radius: var(--r); padding: 12px 16px;
-  font-family: var(--font-body); font-size: 0.83rem;
-  color: var(--fg-secondary); line-height: 1.65;
-  margin-bottom: 16px;
-}}
-.notice.warn {{ border-left-color: var(--amber); }}
-.notice.danger {{ border-left-color: var(--red); }}
-.notice.sci {{ border-left-color: var(--sci-primary); }}
-.notice strong {{ color: var(--fg-primary); }}
-.notice-icon {{ font-size: 1rem; flex-shrink: 0; margin-top: 1px; }}
-
-/* ── Section header ── */
-.sec-hdr {{
-  display: flex; align-items: center; gap: 12px;
-  margin: 28px 0 16px;
-}}
-.sec-hdr-text {{
-  font-family: var(--font-display) !important;
-  font-size: 1.3rem !important; font-weight: 700 !important;
-  color: var(--fg-primary) !important; white-space: nowrap;
-}}
-.sec-hdr-line {{
-  flex: 1; height: 1px;
-  background: linear-gradient(90deg, var(--border), transparent);
-}}
-
-/* ── Subtest info cards ── */
-.subtest-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }}
-.subtest-card {{
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 20px 22px;
-  transition: all var(--transition);
-}}
-.subtest-card.math {{ border-top: 2px solid var(--math-primary); }}
-.subtest-card.sci {{ border-top: 2px solid var(--sci-primary); }}
-.subtest-card:hover {{ border-color: var(--bg-subtle); background: var(--bg-overlay); }}
-.sc-icon {{ font-size: 1.6rem; margin-bottom: 8px; }}
-.sc-title {{
-  font-family: var(--font-display); font-size: 1.15rem;
-  font-weight: 700; color: var(--fg-primary); margin-bottom: 4px;
-}}
-.sc-meta {{
-  font-family: var(--font-mono); font-size: 0.62rem;
-  color: var(--fg-muted); letter-spacing: 0.06em;
-  text-transform: uppercase; margin-bottom: 8px;
-}}
-.sc-detail {{
-  font-family: var(--font-body); font-size: 0.78rem;
-  color: var(--fg-secondary); line-height: 1.6;
-}}
-
-/* ── Competency input ── */
-.comp-card {{
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 14px 18px 10px; margin-bottom: 8px;
-}}
-.comp-label {{
-  font-family: var(--font-mono); font-size: 0.60rem;
-  letter-spacing: 0.16em; text-transform: uppercase;
-  color: var(--fg-muted); margin-bottom: 6px; display: block;
-}}
-.comp-label.math {{ color: var(--math-primary); }}
-.comp-label.sci {{ color: var(--sci-primary); }}
-
-/* ── Progress bar ── */
-.prog-wrap {{ margin: 8px 0 14px; }}
-.prog-row {{
-  display: flex; justify-content: space-between;
-  font-family: var(--font-mono); font-size: 0.62rem;
-  color: var(--fg-muted); margin-bottom: 5px;
-}}
-.prog-track {{
-  height: 5px; background: var(--bg-subtle);
-  border-radius: 3px; overflow: hidden;
-}}
-.prog-fill-math {{ height: 100%; border-radius: 3px; background: linear-gradient(90deg, #1d4ed8, var(--math-primary)); transition: width 0.5s ease; }}
-.prog-fill-sci {{ height: 100%; border-radius: 3px; background: linear-gradient(90deg, #0d5a55, var(--sci-primary)); transition: width 0.5s ease; }}
-
-/* ── Question cards ── */
-.q-card {{
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--math-primary);
-  border-radius: var(--r);
-  padding: 18px 22px;
-  margin-bottom: 10px;
-  transition: border-color var(--transition), box-shadow var(--transition);
-  position: relative;
-}}
-.q-card.sci {{ border-left-color: var(--sci-primary); }}
-.q-card.answered {{ border-left-color: var(--green); }}
-.q-card.flagged {{ border-left-color: var(--amber); }}
-.q-card:hover {{ box-shadow: var(--shadow-sm); }}
-
-.q-meta {{
-  display: flex; align-items: center; gap: 6px;
-  margin-bottom: 12px; flex-wrap: wrap;
-}}
-.q-num {{
+.hs-lbl {{
   font-family: var(--font-mono); font-size: 0.58rem;
-  font-weight: 700; letter-spacing: 0.14em;
-  text-transform: uppercase; color: var(--math-primary);
-  background: var(--math-glow);
-  padding: 2px 8px; border-radius: 4px;
-  border: 1px solid rgba(88,166,255,0.2);
+  color: rgba(255,255,255,0.3); text-transform: uppercase;
+  letter-spacing: 0.12em; margin-top: 4px;
 }}
-.q-num.sci {{ color: var(--sci-primary); background: var(--sci-glow); border-color: rgba(57,208,197,0.2); }}
-.q-tag {{
-  font-family: var(--font-mono); font-size: 0.54rem;
-  font-weight: 500; letter-spacing: 0.06em;
-  padding: 2px 8px; border-radius: 4px;
-  border: 1px solid var(--border);
-  color: var(--fg-muted);
-  background: var(--bg-overlay);
+
+.sec-title {{
+  font-family: var(--font-display) !important;
+  font-size: 0.72rem !important; font-weight: 700 !important;
+  letter-spacing: 0.2em !important; text-transform: uppercase !important;
+  color: var(--fg2) !important;
+  display: flex; align-items: center; gap: 10px;
+  margin: 28px 0 14px;
 }}
-.q-stem {{
-  font-family: var(--font-body); font-size: var(--base-fs);
-  line-height: 1.85; color: var(--fg-primary);
+.sec-title::after {{
+  content: ''; flex: 1; height: 1px;
+  background: var(--border);
+}}
+
+.notice {{
+  display: flex; gap: 12px;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-left: 3px solid var(--blue);
+  border-radius: var(--r); padding: 12px 16px;
+  font-family: var(--font-body); font-size: 0.84rem;
+  color: var(--fg1); line-height: 1.7;
   margin-bottom: 14px;
 }}
-/* LaTeX rendering */
-.q-stem .katex, .q-stem .katex * {{ color: var(--fg-primary) !important; }}
-.q-stem .katex-display {{ overflow-x: auto; overflow-y: hidden; }}
+.notice.warn {{ border-left-color: var(--amber); }}
+.notice.sci  {{ border-left-color: var(--teal); }}
+.notice.red  {{ border-left-color: var(--red); }}
+.notice.green{{ border-left-color: var(--green); }}
+.notice strong {{ color: var(--fg0); }}
+.ni {{ font-size: 1rem; flex-shrink: 0; margin-top: 1px; }}
+
+.comp-wrap {{
+  background: var(--bg1);
+  border: 1px solid var(--border2);
+  border-radius: var(--r2);
+  padding: 16px 20px; margin-bottom: 12px;
+}}
+.comp-wrap.math {{ border-top: 2px solid var(--blue); }}
+.comp-wrap.sci  {{ border-top: 2px solid var(--teal); }}
+.comp-head {{
+  font-family: var(--font-display); font-size: 0.85rem;
+  font-weight: 700; color: var(--fg0); margin-bottom: 4px;
+}}
+.comp-sub {{
+  font-family: var(--font-mono); font-size: 0.62rem;
+  color: var(--fg2); letter-spacing: 0.08em;
+  text-transform: uppercase; margin-bottom: 10px;
+}}
+
+/* ── Question card ── */
+.q-card {{
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--blue);
+  border-radius: var(--r2);
+  padding: 20px 24px;
+  margin-bottom: 14px;
+  transition: box-shadow var(--t), border-color var(--t);
+  scroll-margin-top: 80px;
+}}
+.q-card.sci {{ border-left-color: var(--teal); }}
+.q-card.answered {{ border-left-color: var(--green); }}
+.q-card.flagged {{ border-left-color: var(--amber); }}
+.q-card:hover {{ box-shadow: 0 4px 20px rgba(0,0,0,0.4); }}
+
+.q-meta {{
+  display: flex; align-items: center; gap: 7px;
+  flex-wrap: wrap; margin-bottom: 14px;
+}}
+.q-badge {{
+  font-family: var(--font-mono); font-size: 0.58rem;
+  font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 3px 10px; border-radius: 4px;
+}}
+.q-badge.math {{ color: var(--blue); background: var(--blue-dim); border: 1px solid rgba(77,159,255,0.2); }}
+.q-badge.sci  {{ color: var(--teal); background: var(--teal-dim); border: 1px solid rgba(45,212,191,0.2); }}
+.q-badge.tag  {{
+  color: var(--fg2); background: var(--bg3);
+  border: 1px solid var(--border2);
+}}
+.q-badge.flag {{ color: var(--amber); background: var(--amber-dim); border: 1px solid rgba(251,191,36,0.2); }}
+.q-badge.ok   {{ color: var(--green); background: var(--green-dim); border: 1px solid rgba(52,211,153,0.2); }}
+
+.q-stem {{
+  font-family: var(--font-body); font-size: var(--fs);
+  line-height: 1.9; color: var(--fg0);
+  margin-bottom: 16px;
+}}
+/* KaTeX rendering */
+.q-stem .katex, .q-stem .katex * {{ color: var(--fg0) !important; }}
+.q-stem .katex-display {{
+  background: var(--bg3); border-radius: var(--r);
+  padding: 12px 16px; margin: 10px 0;
+  overflow-x: auto; overflow-y: hidden;
+  border: 1px solid var(--border);
+}}
 
 /* Science stimuli */
-.sci-passage {{
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--sci-primary);
-  border-radius: var(--r-sm);
-  padding: 14px 18px; margin-bottom: 12px;
-  font-family: var(--font-body); font-size: 0.88rem;
-  line-height: 1.85; color: var(--fg-secondary);
-  max-height: 260px; overflow-y: auto;
+.stim-passage {{
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-left: 3px solid var(--teal);
+  border-radius: var(--r); padding: 14px 18px;
+  margin-bottom: 14px;
+  font-family: var(--font-body); font-size: 0.875rem;
+  line-height: 1.85; color: var(--fg1);
 }}
-.sci-data-box {{
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+.stim-data {{
+  background: var(--bg2);
+  border: 1px solid var(--border2);
   border-left: 3px solid var(--amber);
-  border-radius: var(--r-sm);
-  padding: 14px 18px; margin-bottom: 12px;
-  font-family: var(--font-mono); font-size: 0.80rem;
-  line-height: 1.7; color: var(--fg-secondary);
+  border-radius: var(--r); padding: 14px 18px;
+  margin-bottom: 14px;
+  font-family: var(--font-mono); font-size: 0.78rem;
+  line-height: 1.7; color: var(--fg1);
   overflow-x: auto;
 }}
-.sci-table {{ width: 100%; border-collapse: collapse; font-size: 0.82rem; }}
-.sci-table th {{
-  background: var(--bg-overlay); color: var(--fg-primary);
-  padding: 8px 12px; font-size: 0.72rem; text-align: left;
-  border-bottom: 1px solid var(--border); font-weight: 600;
-  letter-spacing: 0.04em; font-family: var(--font-mono);
-}}
-.sci-table td {{
-  padding: 7px 12px; border-bottom: 1px solid var(--border-mid);
-  color: var(--fg-secondary); font-family: var(--font-body);
-}}
-.sci-table tr:last-child td {{ border-bottom: none; }}
-.sci-table tr:hover td {{ background: var(--bg-overlay); }}
-
 .stim-label {{
   font-family: var(--font-mono); font-size: 0.58rem;
   letter-spacing: 0.14em; text-transform: uppercase;
-  margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+  margin-bottom: 8px; display: block;
 }}
-.stim-label.passage {{ color: var(--sci-primary); }}
-.stim-label.data {{ color: var(--amber); }}
-.stim-label.diagram {{ color: var(--purple); }}
+.stim-label.p {{ color: var(--teal); }}
+.stim-label.d {{ color: var(--amber); }}
+.stim-label.g {{ color: var(--purple); }}
 
-/* ── Item navigator ── */
-.item-nav {{
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 12px 14px; margin-bottom: 16px;
-  position: sticky; top: 10px; z-index: 99;
-  box-shadow: var(--shadow-md);
+/* Tables inside stimuli */
+.sci-tbl {{ width: 100%; border-collapse: collapse; margin-top: 6px; }}
+.sci-tbl th {{
+  background: var(--bg3); color: var(--fg0);
+  padding: 8px 12px; text-align: left;
+  border-bottom: 1px solid var(--border2);
+  font-size: 0.72rem; letter-spacing: 0.04em;
+}}
+.sci-tbl td {{
+  padding: 7px 12px; border-bottom: 1px solid var(--border);
+  color: var(--fg1); font-size: 0.82rem;
+}}
+.sci-tbl tr:last-child td {{ border-bottom: none; }}
+.sci-tbl tr:hover td {{ background: var(--bg3); }}
+
+/* Navigator */
+.nav-box {{
+  background: var(--bg1);
+  border: 1px solid var(--border2);
+  border-radius: var(--r2); padding: 14px 18px;
+  margin-bottom: 18px; position: sticky; top: 10px; z-index: 99;
+  box-shadow: var(--shadow);
 }}
 .nav-title {{
   font-family: var(--font-mono); font-size: 0.58rem;
-  letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--fg-muted); margin-bottom: 8px;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--fg2); margin-bottom: 10px;
 }}
 .nav-grid {{ display: flex; flex-wrap: wrap; gap: 4px; }}
 .nav-dot {{
-  min-width: 30px; height: 26px;
-  border-radius: 5px;
-  display: inline-flex; align-items: center; justify-content: center;
-  font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700;
+  min-width: 32px; height: 28px;
+  border-radius: 5px; display: inline-flex;
+  align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 0.6rem; font-weight: 600;
   cursor: pointer;
-  background: var(--bg-overlay); color: var(--fg-muted);
+  background: var(--bg3); color: var(--fg2);
   border: 1px solid var(--border);
-  transition: all var(--transition);
+  transition: all var(--t);
 }}
-.nav-dot:hover {{ border-color: var(--math-primary); color: var(--math-primary); transform: scale(1.08); }}
-.nav-dot.answered-m {{ background: var(--math-dim); color: var(--math-primary); border-color: var(--math-primary); }}
-.nav-dot.answered-s {{ background: var(--sci-dim); color: var(--sci-primary); border-color: var(--sci-primary); }}
-.nav-dot.flagged {{ background: var(--amber-dim); color: var(--amber); border-color: var(--amber); }}
+.nav-dot:hover {{ border-color: var(--blue); color: var(--blue); transform: scale(1.1); }}
+.nav-dot.am {{ background: var(--blue-dim); color: var(--blue); border-color: rgba(77,159,255,0.3); }}
+.nav-dot.as {{ background: var(--teal-dim); color: var(--teal); border-color: rgba(45,212,191,0.3); }}
+.nav-dot.fl {{ background: var(--amber-dim); color: var(--amber); border-color: rgba(251,191,36,0.3); }}
 
-/* ── Timer ── */
-.timer-chip {{
+/* Progress bar */
+.pbar-wrap {{ margin-bottom: 12px; }}
+.pbar-row {{
+  display: flex; justify-content: space-between;
+  font-family: var(--font-mono); font-size: 0.6rem;
+  color: var(--fg2); margin-bottom: 5px;
+}}
+.pbar-track {{
+  height: 4px; background: var(--bg3);
+  border-radius: 2px; overflow: hidden;
+}}
+.pbar-fill-m {{ height: 100%; border-radius: 2px; background: linear-gradient(90deg, #1a56db, var(--blue)); transition: width 0.5s ease; }}
+.pbar-fill-s {{ height: 100%; border-radius: 2px; background: linear-gradient(90deg, #0d6b63, var(--teal)); transition: width 0.5s ease; }}
+
+/* Timer */
+.timer {{
   position: fixed; top: 16px; right: 20px; z-index: 99999;
-  font-family: var(--font-mono); font-size: 0.9rem; font-weight: 700;
-  padding: 7px 16px; border-radius: 24px;
-  border: 1px solid rgba(88,166,255,0.35);
-  background: var(--bg-surface);
-  color: var(--math-primary);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 20px rgba(88,166,255,0.08);
-  letter-spacing: 0.04em;
-  transition: all 0.3s;
+  font-family: var(--font-mono); font-size: 0.95rem; font-weight: 600;
+  padding: 8px 18px; border-radius: 24px;
+  border: 1px solid rgba(77,159,255,0.3);
+  background: var(--bg1);
+  color: var(--blue);
+  box-shadow: var(--shadow);
+  letter-spacing: 0.06em;
 }}
-.timer-chip.sci {{ color: var(--sci-primary); border-color: rgba(57,208,197,0.35); }}
-.timer-chip.warn {{ color: var(--amber); border-color: rgba(210,153,34,0.5); }}
-.timer-chip.danger {{ color: var(--red); border-color: rgba(248,81,73,0.5); animation: pulse-red 1s infinite; }}
+.timer.s {{ color: var(--teal); border-color: rgba(45,212,191,0.3); }}
+.timer.w {{ color: var(--amber); border-color: rgba(251,191,36,0.4); }}
+.timer.d {{ color: var(--red); border-color: rgba(248,113,113,0.4); animation: pulse 1s infinite; }}
+@keyframes pulse {{ 0%,100% {{ opacity:1; }} 50% {{ opacity:0.6; }} }}
 
-@keyframes pulse-red {{
-  0%,100% {{ opacity: 1; }}
-  50% {{ opacity: 0.7; }}
-}}
-
-/* ── Stat pills ── */
-.stat-row {{ display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; }}
+/* Stat row */
+.stat-row {{ display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }}
 .stat-pill {{
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  padding: 10px 16px; flex: 1; min-width: 100px;
-  text-align: center;
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: var(--r); padding: 12px 18px; flex: 1; min-width: 90px; text-align: center;
 }}
-.sp-num {{ font-family: var(--font-display); font-size: 1.4rem; font-weight: 900; line-height: 1; }}
-.sp-lbl {{ font-family: var(--font-mono); font-size: 0.56rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-muted); margin-top: 3px; }}
+.sp-n {{ font-family: var(--font-display); font-size: 1.6rem; font-weight: 800; line-height: 1; }}
+.sp-l {{ font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg2); margin-top: 4px; }}
 
-/* ── Results hero ── */
+/* Results */
 .res-hero {{
-  background: linear-gradient(135deg, #060d1a 0%, #0b1829 40%, #0a1f3e 100%);
-  border: 1px solid var(--border);
-  border-radius: var(--r-xl);
-  padding: 48px; text-align: center;
-  position: relative; overflow: hidden;
-  margin-bottom: 20px;
-  box-shadow: var(--shadow-lg);
+  background: linear-gradient(145deg, #070b12, #0c1628, #071420);
+  border: 1px solid var(--border2);
+  border-radius: 20px; padding: 52px 48px;
+  text-align: center; position: relative; overflow: hidden;
+  margin-bottom: 24px; box-shadow: var(--shadow2);
 }}
 .res-hero-glow {{
   position: absolute; inset: 0;
-  background: radial-gradient(ellipse at center, rgba(88,166,255,0.08) 0%, transparent 65%);
+  background: radial-gradient(ellipse at center, rgba(77,159,255,0.07) 0%, transparent 65%);
   pointer-events: none;
 }}
 .upg-label {{
-  font-family: var(--font-mono); font-size: 0.62rem;
-  letter-spacing: 0.22em; text-transform: uppercase;
-  color: rgba(255,255,255,0.35); margin-bottom: 8px;
+  font-family: var(--font-mono); font-size: 0.6rem;
+  letter-spacing: 0.25em; text-transform: uppercase;
+  color: rgba(255,255,255,0.3); margin-bottom: 10px;
   position: relative; z-index: 1;
 }}
 .upg-val {{
   font-family: var(--font-display);
-  font-size: clamp(3.5rem, 8vw, 6rem);
-  font-weight: 900; line-height: 1;
+  font-size: clamp(4rem, 9vw, 7rem);
+  font-weight: 800; line-height: 1;
   position: relative; z-index: 1;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.04em;
 }}
 .upg-verdict {{
-  font-family: var(--font-body); font-size: 0.95rem;
-  color: rgba(255,255,255,0.6); margin-top: 10px;
+  font-family: var(--font-body); font-size: 1rem;
+  color: rgba(255,255,255,0.5); margin-top: 12px;
   position: relative; z-index: 1;
 }}
 
-/* ── Sub-UPG cards ── */
-.upg-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }}
+.upg-cards {{ display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }}
 .upg-card {{
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 20px 24px;
+  background: var(--bg1); border: 1px solid var(--border2);
+  border-radius: var(--r2); padding: 22px 26px;
   position: relative; overflow: hidden;
 }}
-.upg-card.math {{ border-top: 2px solid var(--math-primary); }}
-.upg-card.sci {{ border-top: 2px solid var(--sci-primary); }}
-.upg-card-shimmer {{
-  position: absolute; inset: 0; pointer-events: none;
-}}
-.upg-card.math .upg-card-shimmer {{
-  background: radial-gradient(ellipse at top right, rgba(88,166,255,0.06) 0%, transparent 60%);
-}}
-.upg-card.sci .upg-card-shimmer {{
-  background: radial-gradient(ellipse at top right, rgba(57,208,197,0.06) 0%, transparent 60%);
-}}
+.upg-card.m {{ border-top: 2px solid var(--blue); }}
+.upg-card.s {{ border-top: 2px solid var(--teal); }}
 .upg-card-title {{
-  font-family: var(--font-mono); font-size: 0.60rem;
+  font-family: var(--font-mono); font-size: 0.6rem;
   letter-spacing: 0.16em; text-transform: uppercase;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }}
-.upg-card.math .upg-card-title {{ color: var(--math-primary); }}
-.upg-card.sci .upg-card-title {{ color: var(--sci-primary); }}
-.upg-card-value {{
-  font-family: var(--font-display); font-size: 2.4rem;
-  font-weight: 900; line-height: 1; margin-bottom: 4px;
+.upg-card.m .upg-card-title {{ color: var(--blue); }}
+.upg-card.s .upg-card-title {{ color: var(--teal); }}
+.upg-card-val {{
+  font-family: var(--font-display); font-size: 2.8rem;
+  font-weight: 800; line-height: 1; margin-bottom: 6px;
 }}
-.upg-card.math .upg-card-value {{ color: var(--math-primary); }}
-.upg-card.sci .upg-card-value {{ color: var(--sci-primary); }}
-.upg-card-sub {{
-  font-family: var(--font-body); font-size: 0.78rem;
-  color: var(--fg-secondary); line-height: 1.55;
-}}
-.upg-breakdown {{ margin-top: 12px; }}
+.upg-card.m .upg-card-val {{ color: var(--blue); }}
+.upg-card.s .upg-card-val {{ color: var(--teal); }}
+.upg-card-sub {{ font-family: var(--font-body); font-size: 0.8rem; color: var(--fg1); }}
+.upg-br {{ margin-top: 14px; }}
 .upg-br-row {{
   display: flex; justify-content: space-between;
-  padding: 5px 0; border-bottom: 1px solid var(--border-mid);
-  font-family: var(--font-body); font-size: 0.78rem;
+  padding: 6px 0; border-bottom: 1px solid var(--border);
+  font-family: var(--font-body); font-size: 0.8rem;
 }}
 .upg-br-row:last-child {{ border-bottom: none; }}
-.upg-br-lbl {{ color: var(--fg-secondary); }}
-.upg-br-val {{ font-family: var(--font-mono); font-weight: 700; font-size: 0.78rem; }}
+.upg-br-lbl {{ color: var(--fg1); }}
+.upg-br-val {{ font-family: var(--font-mono); font-weight: 600; font-size: 0.78rem; }}
 
-/* ── Metrics grid ── */
-.metrics-grid {{ display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 16px; }}
-.metric-card {{
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 16px 14px; text-align: center;
-  transition: transform var(--transition), box-shadow var(--transition);
-}}
-.metric-card:hover {{ transform: translateY(-2px); box-shadow: var(--shadow-md); }}
-.metric-card-val {{
-  font-family: var(--font-display); font-size: 1.7rem;
-  font-weight: 900; line-height: 1; margin-bottom: 4px;
-}}
-.metric-card-lbl {{
-  font-family: var(--font-mono); font-size: 0.55rem;
-  letter-spacing: 0.11em; text-transform: uppercase;
-  color: var(--fg-muted);
-}}
-.metric-card-sub {{
-  font-family: var(--font-body); font-size: 0.71rem;
-  color: var(--fg-secondary); margin-top: 3px;
-}}
-
-/* ── Score panel ── */
 .score-panel {{
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--r); padding: 18px 22px;
+  background: var(--bg1); border: 1px solid var(--border2);
+  border-radius: var(--r2); padding: 20px 24px;
 }}
 .score-panel h4 {{
   font-family: var(--font-display) !important;
-  font-size: 1.0rem !important; margin-bottom: 12px !important;
-  padding-bottom: 10px !important;
+  font-size: 0.85rem !important; font-weight: 700 !important;
+  letter-spacing: 0.08em !important; text-transform: uppercase !important;
+  margin-bottom: 14px !important; padding-bottom: 12px !important;
   border-bottom: 1px solid var(--border) !important;
-  color: var(--fg-primary) !important;
 }}
 .s-row {{
   display: flex; justify-content: space-between; align-items: center;
-  padding: 7px 0; border-bottom: 1px solid var(--border-mid);
-  font-family: var(--font-body); font-size: 0.83rem;
+  padding: 7px 0; border-bottom: 1px solid var(--border);
+  font-family: var(--font-body); font-size: 0.84rem;
 }}
 .s-row:last-child {{ border-bottom: none; }}
-.s-lbl {{ color: var(--fg-secondary); }}
-.s-val {{ font-family: var(--font-mono); font-weight: 700; font-size: 0.80rem; }}
+.s-lbl {{ color: var(--fg1); }}
+.s-val {{ font-family: var(--font-mono); font-weight: 600; font-size: 0.8rem; }}
 .s-val.c {{ color: var(--green); }}
 .s-val.w {{ color: var(--red); }}
-.s-val.g {{ color: var(--math-primary); }}
+.s-val.g {{ color: var(--blue); }}
 
-/* ── Skill heatmap ── */
 .heat-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }}
 .heat-row {{
   display: flex; align-items: center; gap: 8px;
-  font-family: var(--font-body); font-size: 0.76rem;
-  padding: 7px 10px; border-radius: var(--r-sm);
-  border: 1px solid var(--border);
-  background: var(--bg-surface);
+  font-family: var(--font-body); font-size: 0.75rem;
+  padding: 7px 10px; border-radius: var(--r);
+  border: 1px solid var(--border); background: var(--bg2);
 }}
-.heat-bar-out {{ flex: 1; height: 4px; background: var(--bg-subtle); border-radius: 2px; overflow: hidden; }}
-.heat-bar-in {{ height: 100%; border-radius: 2px; transition: width 0.7s ease; }}
-.heat-bar-in.strong {{ background: var(--green); }}
+.heat-bar-out {{ flex: 1; height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; }}
+.heat-bar-in {{ height: 100%; border-radius: 2px; transition: width 0.8s ease; }}
+.heat-bar-in.hi {{ background: var(--green); }}
 .heat-bar-in.mid {{ background: var(--amber); }}
-.heat-bar-in.weak {{ background: var(--red); }}
-.heat-pct {{ font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700; min-width: 30px; text-align: right; }}
+.heat-bar-in.lo {{ background: var(--red); }}
+.heat-pct {{ font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700; min-width: 32px; text-align: right; }}
 
-/* ── Campus admission cards ── */
-.campus-card {{
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg); overflow: hidden;
-  margin-bottom: 14px;
+.ir-c {{ background: var(--green-dim); border: 1px solid rgba(52,211,153,0.25); border-radius: var(--r); padding: 9px 14px; font-family: var(--font-body); color: var(--green); margin: 4px 0; font-size: var(--fs); }}
+.ir-w {{ background: var(--red-dim);   border: 1px solid rgba(248,113,113,0.25); border-radius: var(--r); padding: 9px 14px; font-family: var(--font-body); color: var(--red);   margin: 4px 0; font-size: var(--fs); }}
+.ir-o {{ background: var(--bg2);       border: 1px solid var(--border);         border-radius: var(--r); padding: 9px 14px; font-family: var(--font-body); color: var(--fg1);  margin: 4px 0; font-size: var(--fs); }}
+
+/* Graph canvas container */
+.graph-container {{
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: var(--r); padding: 8px; margin-bottom: 14px;
+  overflow: hidden;
 }}
-.campus-hdr {{
-  padding: 14px 20px;
-  background: linear-gradient(135deg, #0d2e1a, #0f3b1e);
-  border-bottom: 1px solid var(--border);
-}}
-.campus-hdr.fail {{
-  background: linear-gradient(135deg, #2d1b1b, #3b1f1f);
-}}
-.campus-hdr h4 {{ color: var(--fg-primary) !important; font-size: 0.95rem !important; margin-bottom: 4px !important; }}
-.campus-hdr p {{ color: var(--fg-secondary) !important; font-family: var(--font-mono); font-size: 0.64rem !important; }}
-.campus-body {{ padding: 12px 20px; }}
+
+/* Campus cards */
+.campus-card {{ background: var(--bg1); border: 1px solid var(--border2); border-radius: var(--r2); overflow: hidden; margin-bottom: 14px; }}
+.campus-hdr {{ padding: 14px 20px; background: linear-gradient(135deg, #0a2a16, #0d3820); border-bottom: 1px solid var(--border2); }}
+.campus-hdr.fail {{ background: linear-gradient(135deg, #2a0a0a, #3a1010); }}
+.campus-hdr h4 {{ color: var(--fg0) !important; font-size: 0.95rem !important; margin-bottom: 3px !important; }}
+.campus-hdr p {{ color: var(--fg1) !important; font-family: var(--font-mono); font-size: 0.62rem !important; }}
+.campus-body {{ padding: 14px 20px; }}
 .prog-row {{
   display: flex; justify-content: space-between; align-items: center;
-  padding: 9px 0; border-bottom: 1px solid var(--border-mid);
-  font-family: var(--font-body); font-size: 0.83rem;
+  padding: 9px 0; border-bottom: 1px solid var(--border);
+  font-family: var(--font-body); font-size: 0.84rem;
 }}
 .prog-row:last-child {{ border-bottom: none; }}
-.prog-name {{ font-weight: 600; color: var(--fg-primary); }}
-.prog-sub {{ font-family: var(--font-mono); font-size: 0.60rem; color: var(--fg-muted); margin-top: 2px; }}
-.badge {{
-  font-family: var(--font-mono); font-size: 0.62rem; font-weight: 700;
-  padding: 3px 10px; border-radius: 5px;
-}}
-.badge.pass {{ color: var(--green); background: var(--green-dim); border: 1px solid rgba(63,185,80,0.3); }}
-.badge.risk {{ color: var(--amber); background: var(--amber-dim); border: 1px solid rgba(210,153,34,0.3); }}
-.badge.fail {{ color: var(--red); background: var(--red-dim); border: 1px solid rgba(248,81,73,0.3); }}
+.prog-name {{ font-weight: 600; color: var(--fg0); font-family: var(--font-display); }}
+.prog-sub {{ font-family: var(--font-mono); font-size: 0.58rem; color: var(--fg2); margin-top: 2px; }}
+.badge {{ font-family: var(--font-mono); font-size: 0.6rem; font-weight: 700; padding: 3px 10px; border-radius: 4px; }}
+.badge.pass {{ color: var(--green); background: var(--green-dim); border: 1px solid rgba(52,211,153,0.25); }}
+.badge.risk {{ color: var(--amber); background: var(--amber-dim); border: 1px solid rgba(251,191,36,0.25); }}
+.badge.fail {{ color: var(--red);   background: var(--red-dim);   border: 1px solid rgba(248,113,113,0.25); }}
 
-/* ── Feedback boxes ── */
-.fb-box {{
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 18px 22px; margin-bottom: 12px;
-  font-family: var(--font-body); font-size: var(--base-fs);
-  line-height: 1.8; color: var(--fg-secondary);
-}}
-.fb-box.math {{ border-left: 3px solid var(--math-primary); }}
-.fb-box.sci {{ border-left: 3px solid var(--sci-primary); }}
-.fb-box.green {{ border-left: 3px solid var(--green); }}
-.fb-box.amber {{ border-left: 3px solid var(--amber); }}
-.fb-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }}
-.fb-mini {{
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm); padding: 12px 14px;
-}}
-.fb-mini-title {{
-  font-family: var(--font-mono); font-size: 0.57rem;
-  letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--fg-muted); margin-bottom: 6px;
-}}
-.fb-mini-body {{
-  font-family: var(--font-body); font-size: 0.80rem;
-  color: var(--fg-secondary); line-height: 1.6;
+/* KaTeX load helper */
+.katex-render {{ display: none; }}
+
+/* Graph SVG */
+.chart-wrap {{
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: var(--r2); padding: 20px; margin: 12px 0;
+  overflow: visible;
 }}
 
-/* ── Item review ── */
-.ir-correct {{
-  background: var(--green-dim);
-  border: 1px solid rgba(63,185,80,0.3);
-  border-radius: var(--r-sm); padding: 9px 14px;
-  font-family: var(--font-body); font-size: var(--base-fs);
-  color: var(--green); margin: 3px 0;
-}}
-.ir-wrong {{
-  background: var(--red-dim);
-  border: 1px solid rgba(248,81,73,0.3);
-  border-radius: var(--r-sm); padding: 9px 14px;
-  font-family: var(--font-body); font-size: var(--base-fs);
-  color: var(--red); margin: 3px 0;
-}}
-.ir-option {{
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm); padding: 9px 14px;
-  font-family: var(--font-body); font-size: var(--base-fs);
-  color: var(--fg-secondary); margin: 3px 0;
-}}
-
-/* ── Responsive ── */
 @media (max-width: 768px) {{
-  .hero-inner {{ padding: 24px 22px; }}
-  .metrics-grid {{ grid-template-columns: repeat(2,1fr); }}
-  .fb-grid {{ grid-template-columns: 1fr; }}
+  .hero-inner {{ padding: 28px 24px; }}
+  .upg-cards {{ grid-template-columns: 1fr; }}
   .heat-grid {{ grid-template-columns: 1fr; }}
-  .subtest-grid {{ grid-template-columns: 1fr; }}
-  .upg-row {{ grid-template-columns: 1fr; }}
-  .hero-stats {{ gap: 20px; }}
 }}
-@media print {{ section[data-testid="stSidebar"], .timer-chip, .stButton {{ display: none !important; }} }}
-@media (prefers-reduced-motion: reduce) {{ *,*::before,*::after {{ animation: none !important; transition-duration: 0.01ms !important; }} }}
+@media print {{
+  section[data-testid="stSidebar"], .timer, .stButton {{ display: none !important; }}
+}}
+@media (prefers-reduced-motion: reduce) {{
+  *, *::before, *::after {{ animation: none !important; transition-duration: 0.01ms !important; }}
+}}
 </style>
 """, unsafe_allow_html=True)
 
+# Load KaTeX for proper math rendering
+st.markdown("""
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {
+    delimiters: [
+      {left:'$$',right:'$$',display:true},
+      {left:'$',right:'$',display:false},
+      {left:'\\\\(',right:'\\\\)',display:false},
+      {left:'\\\\[',right:'\\\\]',display:true}
+    ],
+    throwOnError: false,
+    strict: false
+  });"></script>
+""", unsafe_allow_html=True)
+
 # ==========================================
-# 🏫 DATA
+# DATA
 # ==========================================
 SCHOOL_TIERS = {
-    "PSHS (Philippine Science High School)": {"modifier": 0.30, "label": "Elite National Science School", "palugit": True},
-    "DepEd Specialized Science & Math (PSHS-Affiliate)": {"modifier": 0.22, "label": "Regional Specialized", "palugit": True},
-    "DepEd Laboratory School (UP, PNU, etc.)": {"modifier": 0.18, "label": "University Laboratory", "palugit": True},
-    "DepEd Legislated Special School (CLSU, MSU, etc.)": {"modifier": 0.14, "label": "Legislated Special", "palugit": True},
-    "Public — Special Program (STEM, TVL, ABM)": {"modifier": 0.07, "label": "Public SHS Special Track", "palugit": True},
-    "Public — Regular National High School": {"modifier": 0.04, "label": "Public Regular", "palugit": True},
-    "Public — Barangay / Community High School": {"modifier": 0.09, "label": "Barangay NHS (+bonus)", "palugit": True},
-    "Public — Vocational / Technical": {"modifier": 0.06, "label": "Vocational Tech", "palugit": True},
-    "Private — International School (IB, AP, Cambridge)": {"modifier": 0.08, "label": "International Private", "palugit": False},
-    "Private — University Affiliated / Sectarian Elite": {"modifier": -0.04, "label": "Sectarian Elite", "palugit": False},
-    "Private — Regular Sectarian": {"modifier": -0.08, "label": "Private Sectarian", "palugit": False},
-    "Private — Non-Sectarian": {"modifier": -0.12, "label": "Private Non-Sectarian", "palugit": False},
+    "PSHS (Philippine Science High School)": {"modifier": 0.30, "palugit": True},
+    "DepEd Specialized Science & Math (PSHS-Affiliate)": {"modifier": 0.22, "palugit": True},
+    "DepEd Laboratory School (UP, PNU, etc.)": {"modifier": 0.18, "palugit": True},
+    "DepEd Legislated Special School": {"modifier": 0.14, "palugit": True},
+    "Public — Special Program (STEM, TVL, ABM)": {"modifier": 0.07, "palugit": True},
+    "Public — Regular National High School": {"modifier": 0.04, "palugit": True},
+    "Public — Barangay / Community High School": {"modifier": 0.09, "palugit": True},
+    "Public — Vocational / Technical": {"modifier": 0.06, "palugit": True},
+    "Private — International School (IB, AP, Cambridge)": {"modifier": 0.08, "palugit": False},
+    "Private — University Affiliated / Sectarian Elite": {"modifier": -0.04, "palugit": False},
+    "Private — Regular Sectarian": {"modifier": -0.08, "palugit": False},
+    "Private — Non-Sectarian": {"modifier": -0.12, "palugit": False},
 }
 
 CAMPUS_DATA = {
-    "UP Diliman":           {"cutoff": 2.20, "recon": 0.0,   "note": "Strictest. No appeals. 40,000 applicants."},
-    "UP Manila":            {"cutoff": 2.10, "recon": 2.580, "note": "Health sciences hub. Recon available."},
-    "UP Los Baños":         {"cutoff": 2.30, "recon": 2.800, "note": "Agri/forestry leader. Recon for 1st choice."},
-    "UP Baguio":            {"cutoff": 2.50, "recon": 2.700, "note": "Strong arts & sciences."},
+    "UP Diliman":           {"cutoff": 2.20, "recon": 0.0,   "note": "Strictest. No appeals. ~40k applicants."},
+    "UP Manila":            {"cutoff": 2.10, "recon": 2.580, "note": "Health sciences hub."},
+    "UP Los Baños":         {"cutoff": 2.30, "recon": 2.800, "note": "Agri/forestry flagship."},
+    "UP Baguio":            {"cutoff": 2.50, "recon": 2.700, "note": "Arts & sciences."},
     "UP Cebu":              {"cutoff": 2.60, "recon": 2.800, "note": "Growing campus."},
     "UP Mindanao":          {"cutoff": 2.60, "recon": 2.800, "note": "Priority for Mindanaoan applicants."},
-    "UP Visayas (Iloilo)":  {"cutoff": 2.70, "recon": 2.700, "note": "Marine & fisheries focus."},
-    "UP Open University":   {"cutoff": 2.80, "recon": 2.800, "note": "Distance learning format."},
+    "UP Visayas (Iloilo)":  {"cutoff": 2.70, "recon": 2.700, "note": "Marine & fisheries."},
+    "UP Open University":   {"cutoff": 2.80, "recon": 2.800, "note": "Distance learning."},
 }
 
 PROGRAM_TIERS = {
@@ -958,45 +831,45 @@ PROGRAM_TIERS = {
     },
     "UP Manila": {
         "Triple Quota": ["BS Biochemistry","BS Biology","BS Nursing","BS Public Health","BS Pharmacy"],
-        "Double Quota": ["BS Computer Science","D Dental Medicine","BS Occupational Therapy","BS Physical Therapy","BS Speech Pathology","BS Pharmaceutical Sciences"],
-        "Single Quota": ["BS Applied Physics","BA Behavioral Sciences","BA Political Science","BA Social Sciences"],
+        "Double Quota": ["BS Computer Science","D Dental Medicine","BS Occupational Therapy","BS Physical Therapy","BS Speech Pathology"],
+        "Single Quota": ["BS Applied Physics","BA Behavioral Sciences","BA Political Science"],
         "Less Popular": ["BA Development Studies","BA Philippine Arts","BA Social Work"]
     },
     "UP Los Baños": {
         "Triple Quota": ["BS Biology","BS Chemical Engineering","BS Civil Engineering","BS Computer Science","D Veterinary Medicine"],
-        "Double Quota": ["BS Accountancy","BS Economics","BS Electrical Engineering","BS Industrial Engineering","BS Mechanical Engineering","BS Applied Mathematics"],
-        "Single Quota": ["BS Agribusiness Management","BS Agricultural Chemistry","BS Food Technology","BS Mathematics","BS Statistics","BS Applied Physics"],
-        "Less Popular": ["BS Agriculture","BS Forestry","BS Human Ecology","BS Nutrition","BS Environmental Science"]
+        "Double Quota": ["BS Accountancy","BS Economics","BS Electrical Engineering","BS Industrial Engineering","BS Mechanical Engineering"],
+        "Single Quota": ["BS Agribusiness Management","BS Food Technology","BS Mathematics","BS Statistics"],
+        "Less Popular": ["BS Agriculture","BS Forestry","BS Human Ecology","BS Nutrition"]
     },
     "UP Baguio": {
         "Triple Quota": ["BS Computer Science","BS Biology","BS Mathematics"],
-        "Double Quota": ["BA Communication","BS Physics","BS Management Economics","B Fine Arts"],
+        "Double Quota": ["BA Communication","BS Physics","BS Management Economics"],
         "Single Quota": ["BA Languages & Literature","BS Statistics"],
-        "Less Popular": ["BA Social Sciences (Economics)","BA Social Sciences (History)"]
+        "Less Popular": ["BA Social Sciences"]
     },
     "UP Cebu": {
-        "Triple Quota": ["BS Accountancy","BS Biology","BS Computer Science","BS Management","BA Psychology"],
-        "Double Quota": ["BA Political Science","BS Mathematics","B Fine Arts","BS Statistics"],
+        "Triple Quota": ["BS Accountancy","BS Biology","BS Computer Science","BS Management"],
+        "Double Quota": ["BA Political Science","BS Mathematics","BS Statistics"],
         "Single Quota": ["BA Communication"],
-        "Less Popular": ["B Physical Education","BA Arts & Humanities"]
+        "Less Popular": ["BA Arts & Humanities"]
     },
     "UP Mindanao": {
         "Triple Quota": ["BS Architecture","BS Biology","BS Computer Science","BS Data Science"],
-        "Double Quota": ["BS Agribusiness Economics","BS Applied Mathematics","BA Communication and Media Arts","BS Food Technology"],
-        "Single Quota": ["BA English (Creative Writing)","BS Environmental Science"],
+        "Double Quota": ["BS Agribusiness Economics","BS Food Technology"],
+        "Single Quota": ["BA English","BS Environmental Science"],
         "Less Popular": ["BA Anthropology","BA Mindanao Studies"]
     },
     "UP Visayas (Iloilo)": {
-        "Triple Quota": ["BS Accountancy","BS Biology","BS Business Administration","BS Chemical Engineering","BS Computer Science","BS Economics","BS Fisheries","BS Management","BA Political Science","BA Psychology","BS Public Health"],
+        "Triple Quota": ["BS Accountancy","BS Biology","BS Business Administration","BS Chemical Engineering","BS Computer Science","BS Economics","BS Fisheries","BS Management","BS Public Health"],
         "Double Quota": ["BS Chemistry","BS Food Technology","BS Statistics","BS Marine Biology"],
         "Single Quota": ["BS Applied Mathematics","BS Fisheries Engineering"],
-        "Less Popular": ["BS Community Development","BA History","BA Literature","BA Sociology"]
+        "Less Popular": ["BS Community Development","BA History","BA Literature"]
     },
     "UP Open University": {
         "Triple Quota": [],
         "Double Quota": [],
         "Single Quota": ["BA Multi Media Studies","B Education Studies"],
-        "Less Popular": ["BA Social Sciences","BA Journalism","B Public Management"]
+        "Less Popular": ["BA Social Sciences","BA Journalism"]
     }
 }
 
@@ -1008,64 +881,55 @@ def get_all_programs(campus):
 
 def get_program_tier(campus, program):
     for tier, plist in PROGRAM_TIERS.get(campus, {}).items():
-        if program in plist: return tier
+        if program in plist:
+            return tier
     return "Less Popular"
 
 # ==========================================
-# ⚙️ SIDEBAR
+# SIDEBAR
 # ==========================================
 with st.sidebar:
     st.markdown("""
-    <div class='sb-brand'>
-        <img src='https://upload.wikimedia.org/wikipedia/en/thumb/3/3d/University_of_the_Philippines_seal.svg/1200px-University_of_the_Philippines_seal.svg.png'
-             width='58' alt='UP seal'/>
-        <span class='sb-title'>Padayon! Agham at Matematika</span>
-        <span class='sb-sub'>UPCAT Elite Simulator · v2.0</span>
+    <div style='background: linear-gradient(135deg, var(--bg1), var(--bg2)); border-bottom: 1px solid var(--border); padding: 24px 20px 20px; text-align: center;'>
+      <div style='font-family: var(--font-display); font-size: 1.15rem; font-weight: 800; color: var(--fg0); letter-spacing: -0.02em; margin-bottom: 4px;'>PADAYON!</div>
+      <div style='font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--fg2);'>UPCAT Agham + Matematika · 2026</div>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<span class="sb-section">♿ Display</span>', unsafe_allow_html=True)
-    font_size = st.select_slider("Text Size", options=["small","medium","large","x-large"],
-        value=st.session_state.get('font_size','medium'))
+    st.markdown('<div class="sec-title" style="margin: 18px 0 10px; padding-left: 12px; font-size: 0.6rem;">🔑 API Config</div>', unsafe_allow_html=True)
+    api_key = st.text_input("Gemini API Key", type="password", placeholder="AIza...", help="Get free key at aistudio.google.com")
+    gemini_model = st.selectbox("Model", ["gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-pro"], index=0)
+
+    st.markdown('<div class="sec-title" style="margin: 14px 0 10px; padding-left: 12px; font-size: 0.6rem;">♿ Display</div>', unsafe_allow_html=True)
+    font_size = st.select_slider("Text Size", options=["small","medium","large","x-large"], value=st.session_state.get('font_size','medium'))
     if font_size != st.session_state.get('font_size'):
         st.session_state['font_size'] = font_size; st.rerun()
     show_timer = st.checkbox("Show Countdown Timer", value=True)
     show_nav = st.checkbox("Show Item Navigator", value=True)
     enable_flag = st.checkbox("Enable Item Flagging 🚩", value=True)
 
-    st.markdown('<span class="sb-section">🔑 API Config</span>', unsafe_allow_html=True)
-    api_key = st.text_input("Gemini API Key", type="password", placeholder="AIza...",
-        help="Get free key at aistudio.google.com")
-    gemini_model = st.selectbox("Model", [
-        "gemini-2.5-pro",
-        "gemini-3-flash-preview",
-        "gemini-3.1-pro-preview",
-    ], index=0)
-
-    st.markdown('<span class="sb-section">🏫 School Type</span>', unsafe_allow_html=True)
-    jhs_type = st.selectbox("JHS School", list(SCHOOL_TIERS.keys()), index=5)
-    shs_type = st.selectbox("SHS School", list(SCHOOL_TIERS.keys()), index=5)
+    st.markdown('<div class="sec-title" style="margin: 14px 0 10px; padding-left: 12px; font-size: 0.6rem;">🏫 School Type</div>', unsafe_allow_html=True)
+    jhs_type = st.selectbox("JHS School Type", list(SCHOOL_TIERS.keys()), index=5)
+    shs_type = st.selectbox("SHS School Type", list(SCHOOL_TIERS.keys()), index=5)
     jhs_mod = SCHOOL_TIERS[jhs_type]["modifier"]
     shs_mod = SCHOOL_TIERS[shs_type]["modifier"]
-    palugit_jhs = SCHOOL_TIERS[jhs_type]["palugit"]
-    palugit_shs = SCHOOL_TIERS[shs_type]["palugit"]
-    if palugit_jhs or palugit_shs:
-        st.caption(f"✅ Palugit active — JHS {jhs_mod:+.2f} / SHS {shs_mod:+.2f}")
+    palugit_active = SCHOOL_TIERS[jhs_type]["palugit"] or SCHOOL_TIERS[shs_type]["palugit"]
+    if palugit_active:
+        st.caption(f"✅ Palugit: JHS {jhs_mod:+.2f} / SHS {shs_mod:+.2f}")
 
-    st.markdown('<span class="sb-section">📐 Math Grades (G8–G11)</span>', unsafe_allow_html=True)
-    st.caption("DepEd Final Grade (60–100). UPCAT uses G8–G11.")
+    st.markdown('<div class="sec-title" style="margin: 14px 0 10px; padding-left: 12px; font-size: 0.6rem;">📐 Math Grades G8–G11</div>', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
-        g8_math     = st.number_input("G8 Math",       60.0, 100.0, 87.0, 0.5)
-        g9_math     = st.number_input("G9 Math",       60.0, 100.0, 87.0, 0.5)
-        g10_math    = st.number_input("G10 Math",      60.0, 100.0, 88.0, 0.5)
-        g11_precalc = st.number_input("Pre-Calculus",  60.0, 100.0, 88.0, 0.5)
+        g8_math     = st.number_input("G8 Math",      60.0, 100.0, 87.0, 0.5)
+        g9_math     = st.number_input("G9 Math",      60.0, 100.0, 87.0, 0.5)
+        g10_math    = st.number_input("G10 Math",     60.0, 100.0, 88.0, 0.5)
+        g11_precalc = st.number_input("Pre-Calculus", 60.0, 100.0, 88.0, 0.5)
     with c2:
         g11_calc    = st.number_input("Basic Calculus",60.0, 100.0, 87.0, 0.5)
         g11_stats   = st.number_input("Stats & Prob",  60.0, 100.0, 88.0, 0.5)
         g11_genmath = st.number_input("Gen. Math",     60.0, 100.0, 88.0, 0.5)
 
-    st.markdown('<span class="sb-section">🔬 Science Grades (G8–G11)</span>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-title" style="margin: 14px 0 10px; padding-left: 12px; font-size: 0.6rem;">🔬 Science Grades G8–G11</div>', unsafe_allow_html=True)
     c3, c4 = st.columns(2)
     with c3:
         g8_sci   = st.number_input("G8 Science",  60.0, 100.0, 87.0, 0.5)
@@ -1076,503 +940,614 @@ with st.sidebar:
         g11_bio2  = st.number_input("Gen Bio 2",  60.0, 100.0, 88.0, 0.5)
         g11_earth = st.number_input("Earth Sci",  60.0, 100.0, 87.0, 0.5)
 
-    st.markdown('<span class="sb-section">🎯 Campus & Program</span>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-title" style="margin: 14px 0 10px; padding-left: 12px; font-size: 0.6rem;">🎯 Campus & Program Choices</div>', unsafe_allow_html=True)
     campus_1 = st.selectbox("1st Choice Campus", list(CAMPUS_DATA.keys()), index=0)
-    c1_p1 = st.selectbox("Program Priority 1", get_all_programs(campus_1), key="c1p1")
-    c1_p2 = st.selectbox("Program Priority 2", get_all_programs(campus_1), key="c1p2")
-    c1_p3 = st.selectbox("Program Priority 3", get_all_programs(campus_1), key="c1p3")
+    c1_p1 = st.selectbox("Priority 1", get_all_programs(campus_1), key="c1p1")
+    c1_p2 = st.selectbox("Priority 2", get_all_programs(campus_1), key="c1p2")
+    c1_p3 = st.selectbox("Priority 3", get_all_programs(campus_1), key="c1p3")
     campus_2 = st.selectbox("2nd Choice Campus", list(CAMPUS_DATA.keys()), index=2)
-    c2_p1 = st.selectbox("Program Priority 1", get_all_programs(campus_2), key="c2p1")
-    c2_p2 = st.selectbox("Program Priority 2", get_all_programs(campus_2), key="c2p2")
-    c2_p3 = st.selectbox("Program Priority 3", get_all_programs(campus_2), key="c2p3")
+    c2_p1 = st.selectbox("Priority 1", get_all_programs(campus_2), key="c2p1")
+    c2_p2 = st.selectbox("Priority 2", get_all_programs(campus_2), key="c2p2")
+    c2_p3 = st.selectbox("Priority 3", get_all_programs(campus_2), key="c2p3")
 
-    st.markdown('<span class="sb-section">⚙️ Sim Parameters</span>', unsafe_allow_html=True)
-    math_items = st.slider("Math Items", 10, 50, 25, 5,
-        help="Full UPCAT Math = 50 items / 60 min. No calculator.")
-    sci_items  = st.slider("Science Items", 10, 45, 20, 5,
-        help="Full UPCAT Science = 45 items / 45 min.")
+    st.markdown('<div class="sec-title" style="margin: 14px 0 10px; padding-left: 12px; font-size: 0.6rem;">⚙️ Simulation Parameters</div>', unsafe_allow_html=True)
+    math_items = st.slider("Math Items", 10, 50, 25, 5)
+    sci_items  = st.slider("Science Items", 10, 45, 20, 5)
     difficulty = st.select_slider("Difficulty",
-        options=["Standard","Competitive","Brutal","Massacre"],
-        value="Competitive",
-        help="Massacre = top ~3% ceiling. 135,000+ competitors.")
+        options=["Standard", "Competitive", "Brutal", "Massacre"],
+        value="Competitive")
 
 # ==========================================
-# 🧠 PROMPT CONFIG
+# DIFFICULTY CONFIG
 # ==========================================
 DIFF_MAP = {
-    "Standard":    ("Standard difficulty: JHS-dominant items. Solvable in under 60s each. Distractors are common errors. Science items: stock knowledge, clear factual basis. Roughly 50% of UPCAT-standard applicants should score ≥60%.", 0.52, 0.16),
-    "Competitive": ("Competitive difficulty: ~top 20% ceiling. Math requires 2-3 step algebra/geometry. Science mixes recall with data-table analysis. Average prepared student takes 60-90s per item.", 0.44, 0.15),
-    "Brutal":      ("Brutal difficulty: ~top 8% ceiling. Items test conceptual depth — not formula memorization. Science includes passage-based data analysis with experimental design questions. Math involves multi-step reasoning without obvious formula entry point.", 0.37, 0.14),
-    "Massacre":    ("Massacre difficulty: ~top 2-3% ceiling (UP Diliman Engineering/MBB/CS level). Math items look deceptively simple but require precise conceptual logic. Distractors match common procedural errors exactly. Science has dense experimental data and multi-variable scenarios. Zero items solvable by rote recall alone.", 0.31, 0.13),
+    "Standard":    ("Items should be solvable in under 60s. Test basic recall and single-step reasoning. ~50% of prepared applicants should score above 60%.", 0.52, 0.16),
+    "Competitive": ("Items require 2-4 steps. Test conceptual understanding, not just formulas. ~Top 20% ceiling. Distractors are common procedural errors.", 0.44, 0.15),
+    "Brutal":      ("Items test deep conceptual knowledge. Multi-step reasoning with non-obvious entry points. ~Top 8% ceiling. Science items use dense experimental data.", 0.37, 0.14),
+    "Massacre":    ("Items appear simple but require precise logical reasoning. ~Top 2-3% ceiling. Zero items solvable by rote recall. Every distractor matches a specific conceptual error.", 0.31, 0.13),
 }
 diff_instruction, MEAN_BASELINE, SIGMA = DIFF_MAP[difficulty]
 
-MATH_TOPIC_WEIGHTS = {
-    "Algebra — Linear Equations, Inequalities, Systems": 15,
-    "Algebra — Polynomials, Factoring, Rational Expressions": 13,
-    "Number Sense — Fractions, Ratios, Percentages, Number Theory": 12,
-    "Algebra — Word Problems (Filipino contexts: distance, mixture, work, age)": 10,
-    "Geometry — Plane (Triangles, Similarity, Circles, Polygons, Coordinate)": 10,
-    "Statistics & Probability (Mean, Median, Mode, Counting, Basic Probability)": 9,
-    "Quadratic Equations (Discriminant, Sum/Product of Roots, Applications)": 8,
-    "Sequences & Series (Arithmetic, Geometric, nth term, Sum)": 6,
-    "Exponents & Logarithms (Laws, Equations, Simplification)": 6,
-    "Geometry — Solid (Volume, Surface Area of Common Solids)": 5,
-    "Functions & Graphs (Domain/Range, Evaluation, Transformations)": 4,
-    "Radicals & Complex Numbers (Simplification, Operations)": 2,
-}
+# ==========================================
+# GRAPH GENERATION HELPERS
+# ==========================================
+def generate_bar_chart_svg(labels, values, title="", color="#4d9fff", width=500, height=280):
+    """Generate an SVG bar chart for embedding in science stimuli."""
+    if not labels or not values:
+        return ""
+    max_v = max(values) if max(values) > 0 else 1
+    margin = {"top": 40, "right": 20, "bottom": 60, "left": 55}
+    chart_w = width - margin["left"] - margin["right"]
+    chart_h = height - margin["top"] - margin["bottom"]
+    bar_w = chart_w / len(values) * 0.7
+    bar_gap = chart_w / len(values)
+    
+    svg_parts = [
+        f'<svg viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg" style="background:#141d2e;border-radius:8px;font-family:IBM Plex Mono,monospace;">',
+        f'<rect width="{width}" height="{height}" fill="#141d2e" rx="8"/>',
+    ]
+    if title:
+        svg_parts.append(f'<text x="{width//2}" y="22" text-anchor="middle" fill="#9aaabb" font-size="11" font-weight="600" letter-spacing="0.05em">{title}</text>')
+    
+    # Y-axis grid lines and labels
+    for i in range(5):
+        y_val = max_v * i / 4
+        y_pos = margin["top"] + chart_h - (y_val / max_v * chart_h)
+        svg_parts.append(f'<line x1="{margin["left"]}" y1="{y_pos:.1f}" x2="{margin["left"]+chart_w}" y2="{y_pos:.1f}" stroke="#1a2540" stroke-width="1"/>')
+        svg_parts.append(f'<text x="{margin["left"]-6}" y="{y_pos+4:.1f}" text-anchor="end" fill="#5a6a7a" font-size="9">{y_val:.1f}</text>')
+    
+    # Bars
+    for i, (lbl, val) in enumerate(zip(labels, values)):
+        bar_h = (val / max_v) * chart_h
+        x = margin["left"] + i * bar_gap + (bar_gap - bar_w) / 2
+        y = margin["top"] + chart_h - bar_h
+        svg_parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" height="{bar_h:.1f}" fill="{color}" opacity="0.85" rx="2"/>')
+        svg_parts.append(f'<text x="{x+bar_w/2:.1f}" y="{y-4:.1f}" text-anchor="middle" fill="#f0f4f8" font-size="9" font-weight="600">{val:.1f}</text>')
+        # X label
+        lbl_short = str(lbl)[:12]
+        svg_parts.append(f'<text x="{x+bar_w/2:.1f}" y="{margin["top"]+chart_h+16:.1f}" text-anchor="middle" fill="#9aaabb" font-size="9" transform="rotate(-30 {x+bar_w/2:.1f} {margin["top"]+chart_h+16:.1f})">{lbl_short}</text>')
+    
+    svg_parts.append('</svg>')
+    return "".join(svg_parts)
 
-SCI_TOPIC_WEIGHTS = {
-    "Biology — Cell Biology (Organelles, Cell Division, Membrane Transport)": 10,
-    "Biology — Genetics (Mendel, Punnett Squares, Inheritance Patterns, DNA basics)": 8,
-    "Biology — Ecology (Food Webs, Biogeochemical Cycles, Ecological Relationships)": 8,
-    "Biology — Human Physiology (Organ Systems, Digestion, Circulation, Respiration)": 7,
-    "Biology — Evolution & Classification (Natural Selection, Taxonomy, Evidence)": 6,
-    "Biology — Plants (Photosynthesis, Transpiration, Plant Tissues)": 5,
-    "Earth Science — Geology (Rock Cycle, Plate Tectonics, Geologic Time)": 8,
-    "Earth Science — Atmosphere & Weather (Layers, Climate, Pressure, Fronts)": 6,
-    "Earth Science — Astronomy (Solar System, Seasons, Stars, Tides)": 5,
-    "Earth Science — Hydrosphere (Water Cycle, Oceans, Groundwater)": 4,
-    "Chemistry — Atomic Structure & Periodic Table (Trends, Electron Config)": 7,
-    "Chemistry — Chemical Bonding & Reactions (Balancing, Reaction Types, pH)": 7,
-    "Chemistry — Matter & Properties (States, Physical vs Chemical Changes)": 5,
-    "Physics — Mechanics (Newton's Laws, Kinematics, Work-Energy, Momentum)": 6,
-    "Physics — Waves, Light & Sound (Wave Properties, Reflection, Refraction)": 4,
-    "Physics — Electricity (Circuits, Ohm's Law, Voltage, Current)": 4,
-}
+def generate_line_chart_svg(x_vals, y_series, title="", width=500, height=280):
+    """Generate SVG line chart."""
+    if not x_vals or not y_series:
+        return ""
+    colors = ["#4d9fff", "#2dd4bf", "#fbbf24", "#f87171", "#a78bfa"]
+    all_y = [v for series in y_series.values() for v in series]
+    min_y = min(all_y) if all_y else 0
+    max_y = max(all_y) if all_y else 1
+    if max_y == min_y: max_y = min_y + 1
+    margin = {"top": 40, "right": 100, "bottom": 50, "left": 55}
+    chart_w = width - margin["left"] - margin["right"]
+    chart_h = height - margin["top"] - margin["bottom"]
+    n = len(x_vals)
+    
+    svg_parts = [
+        f'<svg viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg" style="background:#141d2e;border-radius:8px;font-family:IBM Plex Mono,monospace;">',
+        f'<rect width="{width}" height="{height}" fill="#141d2e" rx="8"/>',
+    ]
+    if title:
+        svg_parts.append(f'<text x="{(width-margin["right"])//2}" y="22" text-anchor="middle" fill="#9aaabb" font-size="11" font-weight="600">{title}</text>')
+    
+    # Grid
+    for i in range(5):
+        y_v = min_y + (max_y - min_y) * i / 4
+        y_p = margin["top"] + chart_h - ((y_v - min_y) / (max_y - min_y) * chart_h)
+        svg_parts.append(f'<line x1="{margin["left"]}" y1="{y_p:.1f}" x2="{margin["left"]+chart_w}" y2="{y_p:.1f}" stroke="#1a2540" stroke-width="1"/>')
+        svg_parts.append(f'<text x="{margin["left"]-6}" y="{y_p+4:.1f}" text-anchor="end" fill="#5a6a7a" font-size="9">{y_v:.2g}</text>')
+    
+    # X axis labels
+    for i, xv in enumerate(x_vals):
+        x = margin["left"] + i * chart_w / max(1, n-1)
+        svg_parts.append(f'<text x="{x:.1f}" y="{margin["top"]+chart_h+14:.1f}" text-anchor="middle" fill="#9aaabb" font-size="9">{xv}</text>')
+    
+    # Lines and legend
+    for ci, (name, y_vals) in enumerate(y_series.items()):
+        color = colors[ci % len(colors)]
+        if len(y_vals) < 1: continue
+        pts = []
+        for i, yv in enumerate(y_vals):
+            x = margin["left"] + i * chart_w / max(1, n-1)
+            y = margin["top"] + chart_h - ((yv - min_y) / (max_y - min_y) * chart_h)
+            pts.append(f"{x:.1f},{y:.1f}")
+        polyline = " ".join(pts)
+        svg_parts.append(f'<polyline points="{polyline}" fill="none" stroke="{color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>')
+        # Dots
+        for i, yv in enumerate(y_vals):
+            x = margin["left"] + i * chart_w / max(1, n-1)
+            y = margin["top"] + chart_h - ((yv - min_y) / (max_y - min_y) * chart_h)
+            svg_parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3" fill="{color}"/>')
+        # Legend
+        ly = margin["top"] + ci * 18
+        svg_parts.append(f'<rect x="{width-margin["right"]+6}" y="{ly}" width="10" height="10" fill="{color}" rx="2"/>')
+        svg_parts.append(f'<text x="{width-margin["right"]+20}" y="{ly+9:.1f}" fill="#9aaabb" font-size="9">{name[:14]}</text>')
+    
+    svg_parts.append('</svg>')
+    return "".join(svg_parts)
 
-MATH_CRITICAL_RULES = """
-UPCAT MATH PSYCHOMETRIC RULES — ALL ARE NON-NEGOTIABLE:
+# ==========================================
+# JSON & LATEX HELPERS
+# ==========================================
+def clean_json(raw: str) -> str:
+    """Robustly extract and clean JSON from model output."""
+    s = raw.strip()
+    # Remove code fences
+    for fence in ["```json", "```JSON", "```"]:
+        if s.startswith(fence):
+            s = s[len(fence):]
+    if s.endswith("```"):
+        s = s[:-3]
+    # Find outermost braces
+    start = s.find("{")
+    if start == -1:
+        return s.strip()
+    # Find matching closing brace
+    depth = 0
+    end = start
+    for i, c in enumerate(s[start:], start):
+        if c == "{": depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    return s[start:end+1].strip()
 
-1. NO CALCULATOR ALLOWED. Every numerical answer must be reachable via mental math or hand computation in under 90 seconds. If the arithmetic is messy, redesign the numbers.
+def render_math_text(text: str) -> str:
+    """Ensure math text renders properly — strip erroneous markdown bold from options."""
+    if not text:
+        return ""
+    # Remove **X)** patterns that were appearing in options (markdown artifacts)
+    text = re.sub(r'\*\*([A-D])\)\*\*\s*', r'\1) ', text)
+    text = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', text)
+    return text
 
-2. ZERO HINTS ABOUT ANSWER. NEVER label difficulty (easy/medium/hard), NEVER use "clearly", "obviously", "simply", or "just". NEVER phrase options so that one option is obviously longer/more complex (a tell for correct answers). Options must be plausibly similar in length and complexity.
-
-3. NO OBVIOUS CORRECT ANSWER POSITIONING. Vary correct answer keys (A, B, C, D) roughly equally. Do NOT cluster correct answers on B or C.
-
-4. LaTeX MANDATORY. Every mathematical expression, fraction, exponent, radical, inequality, equation MUST be wrapped in LaTeX — inline: $...$, display (standalone equation): $$...$$. Plain text math (like "x^2") is FORBIDDEN. Options must also use LaTeX where needed.
-
-5. DISTRACTOR QUALITY. Each wrong option MUST be the exact numerical/algebraic output of a specific, named error:
-   - "SIGN_ERROR" — forgot to flip sign (most common in algebra)
-   - "FORMULA_CONFUSION" — used wrong formula
-   - "ARITHMETIC_ERROR" — correct method, wrong calculation
-   - "CONCEPTUAL_ERROR" — fundamentally wrong approach
-   - "INCOMPLETE_SOLUTION" — stopped one step early
-   - "WRONG_OPERATION" — divided instead of multiplied, etc.
-
-6. TOPIC DISTRIBUTION (approximate): ~58% JHS algebra/geometry/number sense; ~22% statistics/sequences/exponents/logarithms; ~10% functions/graphing; ~10% trigonometry+SHS combined (rare items, 1-3 max).
-
-7. WORD PROBLEMS: Use realistic Filipino contexts (jeepney/tricycle fares, rice/produce prices, construction dimensions, school settings, Filipino names). Keep setup ≤3 sentences.
-
-8. STEP COUNT: Max 3-4 computational steps per item. UPCAT tests quick reasoning, not marathon computation. If it takes longer than 90 seconds for a prepared student, it is too complex.
-
-9. ANSWER OPTIONS: Must be 4 distinct values/expressions. For numerical answers, options should be in the same order (ascending or descending) so as not to hint at the answer by placement.
-
-10. SOLUTION: Minimum 4 clearly labeled steps. Show every step. Explain WHY each step was taken, not just WHAT was done. Final answer must perfectly match correct_answer field.
-"""
-
-SCI_CRITICAL_RULES = """
-UPCAT SCIENCE PSYCHOMETRIC RULES — ALL ARE NON-NEGOTIABLE:
-
-1. ~60% PASSAGE OR DATA-BASED. For these items, provide a stimulus (experimental scenario, data table, or diagram-in-text). The stimulus must contain information NECESSARY to answer the question — not mere context. The correct answer must require reading and interpreting the stimulus.
-
-2. NO PURE MEMORIZATION. Even factual items must test APPLICATION. Forbidden: "What organelle is the powerhouse of the cell?" Permitted: "A cell completely deprived of functioning mitochondria would most directly lose its ability to..."
-
-3. DISCIPLINE DISTRIBUTION: Biology ~38%, Earth Science ~26%, Chemistry ~21%, Physics ~15%. For a balanced test, do not write all Biology first.
-
-4. DATA TABLE FORMAT: Use clean HTML table tags (<table><tr><th><td>) within the "stimulus" field. Include 3-5 columns, 4-6 data rows. Column headers must be specific (include units). Data must be internally consistent and scientifically plausible.
-
-5. NO STOICHIOMETRY ARITHMETIC. UPCAT Science tests conceptual chemistry. Do not write items requiring molar mass calculations, molarity formulas, or significant figure arithmetic beyond simple ratios.
-
-6. LaTeX for chemical formulas: $H_2O$, $CO_2$, $O_2$, $C_6H_{12}O_6$, etc. Do NOT write them as plain text.
-
-7. DISTRACTOR QUALITY. Each wrong option must represent a specific scientific misconception or analytical error:
-   - "MISCONCEPTION" — common wrong belief about the topic
-   - "PARTIAL_TRUTH" — true fact but not supported by THIS stimulus
-   - "REVERSED_CAUSATION" — cause/effect switched
-   - "SCOPE_ERROR" — correct conclusion but applied to wrong variable
-   - "MAGNIFIED_DETAIL" — fixates on minor stimulus detail, misses the main finding
-
-8. ZERO HINTS IN QUESTION TEXT. Do not use "obviously", "clearly", "it is evident". Do not repeat key words from the stimulus in the correct option (makes it guessable).
-
-9. DIAGRAMS: Describe them fully in text within stimulus field with clear labels. Use [DIAGRAM: ...] tag if needed. Make it possible to answer without seeing the actual image.
-
-10. SOLUTION: Minimum 4 sentences: (1) Identify key variable(s) in stimulus. (2) State the relevant scientific principle. (3) Explain why correct answer is correct. (4) Explain why each distractor fails. Reference specific stimulus data.
-"""
-
-def build_custom_section(use_custom, custom_text, subtest):
-    if use_custom and custom_text.strip():
-        return f"""
-CUSTOM COMPETENCIES — PRIORITIZE THESE ABOVE DEFAULT DISTRIBUTION:
-Generate as many items as possible targeting these specific DepEd MELCs/competencies.
-Cycle through them. Remaining items use standard coverage.
-```
-{custom_text.strip()}
-```
-"""
+def build_svg_from_data(chart_data: dict) -> str:
+    """Build SVG chart from parsed chart data embedded in items."""
+    chart_type = chart_data.get("type", "bar")
+    title = chart_data.get("title", "")
+    
+    if chart_type == "bar":
+        labels = chart_data.get("labels", [])
+        values = chart_data.get("values", [])
+        x_label = chart_data.get("x_label", "")
+        color = chart_data.get("color", "#4d9fff")
+        return generate_bar_chart_svg(labels, values, title, color)
+    elif chart_type == "line":
+        x_vals = chart_data.get("x_values", [])
+        y_series = chart_data.get("y_series", {})
+        return generate_line_chart_svg(x_vals, y_series, title)
     return ""
 
-def build_topic_str(weights):
-    return "\n".join([f"  - {t}: ~{w}%" for t, w in weights.items()])
+# ==========================================
+# PROMPT SYSTEM
+# ==========================================
 
-def clean_json(raw):
-    s = raw.strip()
-    for fence in ["```json", "```"]:
-        if s.startswith(fence): s = s[len(fence):]
-    if s.endswith("```"): s = s[:-3]
-    last = s.rfind("}")
-    if last != -1: s = s[:last+1]
-    return s.strip()
+MATH_SYSTEM_PROMPT = """You are the chief psychometrician for the UPCAT Mathematics subtest at UP Office of Admissions.
+Your ONLY job is to generate items that EXACTLY match the provided competencies. You must NOT generate items outside those competencies.
 
-MATH_PROMPT = """
-You are the chief psychometrician and item writer for the UPCAT Mathematics subtest at the University of the Philippines Office of Admissions.
-Construct a psychometrically valid {num_items}-item practice test. All items are multiple choice with exactly 4 options (A, B, C, D).
+IRONCLAD LATEX RULES — ZERO EXCEPTIONS:
+1. Every mathematical expression, variable, number in an equation, fraction, exponent, radical, symbol MUST use LaTeX.
+2. Inline: $...$. Display (standalone): $$...$$
+3. Options must use LaTeX. Example: "$x = \\frac{3}{4}$" not "x = 3/4"
+4. NEVER use plain text math: no "x^2", no "sqrt(x)", no "3/4" inside option text.
+5. Fractions: $\\frac{a}{b}$. Square roots: $\\sqrt{x}$. Exponents: $x^{2}$. Subscripts: $x_{1}$.
 
-DIFFICULTY LEVEL: {difficulty}
-{diff_instruction}
+PSYCHOMETRIC RULES:
+- No calculator. All arithmetic done by hand in ≤90s.
+- 4 options: A, B, C, D. Correct key distributed roughly equal A/B/C/D.
+- Each wrong option = specific named error type (SIGN_ERROR, ARITHMETIC_ERROR, FORMULA_CONFUSION, CONCEPTUAL_ERROR, INCOMPLETE_SOLUTION).
+- Options must be plausible and similar in length/complexity.
+- Word problems: use Filipino contexts (jeepney, tricycle, rice, market, school).
+- Max 3-4 steps per item.
+- Solution: minimum 4 clearly labeled steps.
 
-{custom_section}
+OUTPUT: Return STRICT VALID JSON ONLY. No markdown fences. No preamble. No commentary."""
 
-TOPIC DISTRIBUTION (target percentages):
-{topic_weights}
+SCI_SYSTEM_PROMPT = """You are the chief psychometrician for the UPCAT Science subtest at UP Office of Admissions.
+Your ONLY job is to generate items that EXACTLY match the provided competencies. Do NOT generate items outside those competencies.
 
-{critical_rules}
+STIMULUS & GRAPH RULES:
+- At least 60% of items must have a stimulus (TEXT_PASSAGE, DATA_TABLE, or DIAGRAM).
+- DATA_TABLE stimuli: use clean HTML <table> tags with class="sci-tbl". Include units in headers.
+- For items with quantitative data, you may optionally include a "chart" field with chart specification.
+- Chart spec format: {"type":"bar","title":"...","labels":[...],"values":[...],"color":"#4d9fff"} for bar charts
+  OR {"type":"line","title":"...","x_values":[...],"y_series":{"SeriesName":[...]}} for line charts.
 
-OUTPUT FORMAT: Return STRICT, VALID JSON ONLY. No markdown code fences, no preamble, no trailing commentary.
-No truncation — all {num_items} items must be complete with full solutions.
+PSYCHOMETRIC RULES:
+- NO pure memorization — test APPLICATION and ANALYSIS.
+- Correct answer must require reading the stimulus. Not guessable without it.
+- 4 options: A, B, C, D.
+- Each wrong option = specific misconception (MISCONCEPTION, PARTIAL_TRUTH, REVERSED_CAUSATION, SCOPE_ERROR, MAGNIFIED_DETAIL).
+- NEVER repeat key words from stimulus in correct option.
+- Solution: 4 sentences minimum: (1) key stimulus variable, (2) scientific principle, (3) why correct, (4) why each distractor fails.
+- LaTeX for chemical formulas: $H_2O$, $CO_2$, $O_2$.
 
+OUTPUT: Return STRICT VALID JSON ONLY. No markdown fences. No preamble. No commentary."""
+
+
+def build_math_prompt(competencies: str, num_items: int, difficulty: str, diff_instr: str) -> str:
+    # Parse competency list for better enforcement
+    comp_lines = [l.strip() for l in competencies.strip().split('\n') if l.strip()]
+    comp_count = len(comp_lines)
+    
+    # Determine how many items per competency
+    items_per_comp = max(1, num_items // max(1, comp_count))
+    remainder = num_items - items_per_comp * comp_count
+    
+    comp_assignment = []
+    for i, comp in enumerate(comp_lines):
+        count = items_per_comp + (1 if i < remainder else 0)
+        comp_assignment.append(f"  - [{count} item(s)] {comp}")
+    
+    return f"""Generate exactly {num_items} UPCAT Mathematics items.
+
+DIFFICULTY: {difficulty}
+{diff_instr}
+
+MANDATORY COMPETENCY ASSIGNMENT — YOU MUST FOLLOW THIS EXACTLY:
+Each item must map to one of the competencies below. Generate the specified number of items per competency.
+{chr(10).join(comp_assignment)}
+
+TOTAL ITEMS REQUIRED: {num_items}
+
+Return this exact JSON structure with exactly {num_items} items in the array:
 {{
   "exam_metadata": {{
     "subtest": "Mathematics",
     "total_items": {num_items},
-    "time_minutes": {time_budget},
-    "time_per_item_seconds": {spi_math},
-    "calculator_allowed": false,
     "difficulty": "{difficulty}",
-    "scoring": "+1 correct, -0.25 wrong, 0 blank (RMW)"
+    "calculator_allowed": false,
+    "scoring": "+1 correct, -0.25 wrong, 0 blank"
   }},
   "items": [
     {{
       "item_number": 1,
-      "topic": "Algebra — Linear Equations, Inequalities, Systems",
-      "subtopic": "Linear equation with fractional coefficients",
-      "grade_level_origin": "Grade 8",
-      "question_text": "Full question stem using LaTeX for ALL math. Word problems must use Filipino context. Example: If $\\\\frac{{3x-1}}{{4}} + 2 = \\\\frac{{x+5}}{{3}}$, what is the value of $x$?",
+      "competency": "EXACT text of the competency this item addresses",
+      "topic": "Brief topic label",
+      "subtopic": "Specific concept tested",
+      "grade_level_origin": "Grade 8/9/10/11",
+      "question_text": "Full question using $LaTeX$ for ALL math expressions. Filipino context for word problems.",
       "stimulus": null,
       "options": {{
-        "A": "$x = -7$",
-        "B": "$x = 5$",
-        "C": "$x = -1$",
-        "D": "$x = 11$"
+        "A": "$option text with LaTeX$",
+        "B": "$option text with LaTeX$",
+        "C": "$option text with LaTeX$",
+        "D": "$option text with LaTeX$"
       }},
       "correct_answer": "C",
       "distractor_analysis": {{
-        "A": {{"type": "SIGN_ERROR", "error": "Forgot to distribute negative when moving terms; got $3x - 12 = 4x + 5$ instead of correct form"}},
-        "B": {{"type": "ARITHMETIC_ERROR", "error": "Made multiplication error: computed $3 \\\\times 4 = 16$ instead of 12 when clearing fractions"}},
-        "D": {{"type": "INCOMPLETE_SOLUTION", "error": "Solved for $2x$ but forgot to divide by 2 at the final step"}}
+        "A": {{"type": "SIGN_ERROR", "error": "Description of specific error"}},
+        "B": {{"type": "ARITHMETIC_ERROR", "error": "Description of specific error"}},
+        "D": {{"type": "INCOMPLETE_SOLUTION", "error": "Description of specific error"}}
       }},
-      "solution": "Step 1: Multiply both sides by LCM(4,3) = 12 to clear fractions: $12 \\\\cdot \\\\frac{{3x-1}}{{4}} + 12 \\\\cdot 2 = 12 \\\\cdot \\\\frac{{x+5}}{{3}}$. Step 2: Simplify: $3(3x-1) + 24 = 4(x+5)$. Step 3: Expand: $9x - 3 + 24 = 4x + 20$, so $9x + 21 = 4x + 20$. Step 4: Isolate $x$: $5x = -1$, therefore $x = -\\\\frac{{1}}{{5}}$. (Adjust numbers in your actual item so answer is clean.)",
-      "key_concept": "Solving linear equations with unlike-denominator fractions by multiplying through by the LCM.",
-      "common_mistake_warning": "Most students forget to distribute the multiplication through the entire numerator of each fraction."
+      "solution": "Step 1: ... Step 2: ... Step 3: ... Step 4: ... Final answer: ...",
+      "key_concept": "Core concept tested",
+      "common_mistake": "Most common student error on this item type"
     }}
   ]
-}}
+}}"""
 
-Generate exactly {num_items} items. Every item must have a complete, step-by-step solution. All math in LaTeX. Valid JSON only.
-"""
 
-SCI_PROMPT = """
-You are the chief psychometrician and item writer for the UPCAT Science subtest at the University of the Philippines Office of Admissions.
-Construct a psychometrically valid {num_items}-item practice test. All items are multiple choice with exactly 4 options.
+def build_sci_prompt(competencies: str, num_items: int, difficulty: str, diff_instr: str) -> str:
+    comp_lines = [l.strip() for l in competencies.strip().split('\n') if l.strip()]
+    comp_count = len(comp_lines)
+    items_per_comp = max(1, num_items // max(1, comp_count))
+    remainder = num_items - items_per_comp * comp_count
+    
+    comp_assignment = []
+    for i, comp in enumerate(comp_lines):
+        count = items_per_comp + (1 if i < remainder else 0)
+        comp_assignment.append(f"  - [{count} item(s)] {comp}")
+    
+    return f"""Generate exactly {num_items} UPCAT Science items.
 
-DIFFICULTY LEVEL: {difficulty}
-{diff_instruction}
+DIFFICULTY: {difficulty}
+{diff_instr}
 
-{custom_section}
+MANDATORY COMPETENCY ASSIGNMENT — YOU MUST FOLLOW THIS EXACTLY:
+{chr(10).join(comp_assignment)}
 
-TOPIC DISTRIBUTION (target percentages):
-{topic_weights}
+TOTAL ITEMS REQUIRED: {num_items}
 
-{critical_rules}
-
-STIMULUS TYPES:
-- "TEXT_PASSAGE": 60-120 word experimental/scientific scenario. Answer must require reading it.
-- "DATA_TABLE": HTML table with ≥4 rows and ≥3 columns of real-looking experimental data.
-- "DIAGRAM_TEXT": Clear labeled text description of a diagram/figure.
-- null: Direct conceptual application, no stimulus.
-
-OUTPUT FORMAT: Return STRICT, VALID JSON ONLY. No markdown fences, no preamble, no commentary.
-
+Return this exact JSON structure:
 {{
   "exam_metadata": {{
     "subtest": "Science",
     "total_items": {num_items},
-    "time_minutes": {time_budget},
-    "time_per_item_seconds": {spi_sci},
     "difficulty": "{difficulty}",
-    "scoring": "+1 correct, -0.25 wrong, 0 blank (RMW)",
-    "distribution": "Biology ~38%, Earth Science ~26%, Chemistry ~21%, Physics ~15%"
+    "scoring": "+1 correct, -0.25 wrong, 0 blank"
   }},
   "items": [
     {{
       "item_number": 1,
-      "topic": "Biology — Cell Biology",
-      "subtopic": "Mitochondria and cellular respiration",
-      "grade_level_origin": "Grade 9",
-      "science_discipline": "Biology",
-      "stimulus_type": "TEXT_PASSAGE",
-      "stimulus": "A researcher cultured two groups of liver cells under identical nutrient conditions. Group A was maintained in normal atmospheric oxygen (21% $O_2$). Group B was placed in a sealed chamber with the oxygen gradually depleted to less than 1% over 24 hours. At the end of the experiment, Group A cells showed ATP concentrations of 85 nmol/mg protein, while Group B cells had ATP concentrations of 12 nmol/mg protein. Lactic acid concentrations in Group B were 6.8 times higher than in Group A.",
-      "question_text": "Based on the experimental data, which conclusion about Group B cells is most directly supported?",
+      "competency": "EXACT competency text",
+      "topic": "Brief topic",
+      "subtopic": "Specific concept",
+      "grade_level_origin": "Grade 8/9/10",
+      "science_discipline": "Biology|Chemistry|Physics|Earth Science",
+      "stimulus_type": "TEXT_PASSAGE|DATA_TABLE|DIAGRAM|null",
+      "stimulus": "Passage text OR HTML table with class=sci-tbl OR null",
+      "chart": null,
+      "question_text": "Full question. Reference specific stimulus data.",
       "options": {{
-        "A": "Group B cells experienced complete necrosis due to the absence of nutrients.",
-        "B": "Group B cells shifted primarily to anaerobic respiration to generate ATP.",
-        "C": "Group B cells increased mitochondrial biogenesis to compensate for oxygen loss.",
-        "D": "Group B cells stopped all metabolic activity after 12 hours of oxygen depletion."
+        "A": "Option text",
+        "B": "Option text",
+        "C": "Option text",
+        "D": "Option text"
       }},
       "correct_answer": "B",
       "distractor_analysis": {{
-        "A": {{"type": "SCOPE_ERROR", "error": "Nutrients were identical between groups; the variable was oxygen, not nutrients. Complete necrosis is not indicated by lactic acid production."}},
-        "C": {{"type": "REVERSED_CAUSATION", "error": "Mitochondrial biogenesis requires oxygen; cells deprived of oxygen cannot increase mitochondrial production. This is the opposite of what happens."}},
-        "D": {{"type": "PARTIAL_TRUTH", "error": "ATP was not zero — Group B had 12 nmol/mg protein, indicating some metabolic activity continued via anaerobic pathways."}}
+        "A": {{"type": "MISCONCEPTION", "error": "Specific misconception"}},
+        "C": {{"type": "PARTIAL_TRUTH", "error": "True but not supported by stimulus"}},
+        "D": {{"type": "REVERSED_CAUSATION", "error": "Cause/effect inverted"}}
       }},
-      "solution": "The key variables in the stimulus are: ATP concentration dropped from 85 to 12 nmol/mg protein (86% reduction) and lactic acid increased 6.8x in the oxygen-deprived group. The scientific principle is that lactic acid is the end product of anaerobic glycolysis, which cells switch to when oxygen is unavailable for the electron transport chain. Option B is correct because the dramatic increase in lactic acid directly indicates a shift to anaerobic respiration, while the remaining ATP (12 nmol/mg) confirms some energy production continued through this pathway. Option A is wrong because nutrients were the same and lactic acid production indicates living cells, not necrosis. Option C is wrong because mitochondrial biogenesis requires oxygen — deprived cells downregulate, not upregulate, mitochondria. Option D is wrong because the stimulus explicitly shows non-zero ATP production, proving metabolic activity continued.",
-      "key_concept": "When cells are deprived of oxygen, aerobic respiration in the mitochondria halts; cells compensate via anaerobic glycolysis, producing lactic acid as a byproduct.",
-      "passage_reference": "ATP: 12 vs 85 nmol/mg protein; lactic acid: 6.8× higher in Group B"
+      "solution": "1. Key stimulus variable. 2. Scientific principle. 3. Why correct. 4. Why distractors fail.",
+      "key_concept": "Core concept",
+      "passage_reference": "Key data point from stimulus that proves the answer"
     }}
   ]
-}}
+}}"""
 
-Generate exactly {num_items} items. At least 60% must have stimuli (TEXT_PASSAGE, DATA_TABLE, or DIAGRAM_TEXT). Valid JSON only.
-"""
 
-def generate_subtest(model, prompt, name):
-    response = model.generate_content(prompt)
+def generate_subtest(model, system_prompt: str, user_prompt: str, name: str):
+    """Generate a subtest with robust error handling."""
+    full_prompt = f"{system_prompt}\n\n{user_prompt}"
+    response = model.generate_content(full_prompt)
     raw = clean_json(response.text)
-    data = json.loads(raw)
+    
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        # Attempt to fix common issues
+        # Fix trailing commas
+        raw_fixed = re.sub(r',\s*([}\]])', r'\1', raw)
+        # Fix single quotes
+        raw_fixed = raw_fixed.replace("'", '"')
+        data = json.loads(raw_fixed)
+    
     if "items" not in data or not data["items"]:
         raise ValueError(f"No items in {name} response")
+    
+    # Post-process items to fix formatting issues
+    for item in data["items"]:
+        # Fix options: remove markdown bold artifacts like **A)**
+        for key in ['A','B','C','D']:
+            if key in item.get("options", {}):
+                opt = item["options"][key]
+                opt = re.sub(r'\*\*([A-D])\)\*\*\s*', '', opt)
+                opt = opt.strip()
+                item["options"][key] = opt
+        # Ensure correct_answer is uppercase single letter
+        ca = str(item.get("correct_answer", "")).strip().upper()
+        if ca and ca[0] in "ABCD":
+            item["correct_answer"] = ca[0]
+    
     return data
 
-def run_generation(do_math, do_sci):
+
+def run_generation(do_math: bool, do_sci: bool):
     if not api_key:
         st.error("❌ Enter your Gemini API Key in the sidebar.")
         return
-
+    
+    math_comp = st.session_state.get('competencies_math', '').strip()
+    sci_comp  = st.session_state.get('competencies_sci', '').strip()
+    
+    if do_math and not math_comp:
+        st.error("❌ Please enter Math competencies before generating. This simulator requires you to provide DepEd MELCs/competencies.")
+        return
+    if do_sci and not sci_comp:
+        st.error("❌ Please enter Science competencies before generating.")
+        return
+    
     prog = st.progress(0)
     status = st.empty()
-
+    
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
             gemini_model,
             generation_config={
                 "response_mime_type": "application/json",
-                "temperature": 0.82,
-                "top_p": 0.95,
+                "temperature": 0.75,
+                "top_p": 0.92,
                 "max_output_tokens": 32000,
             }
         )
         new_data = dict(st.session_state.get('test_data') or {})
-
+        
         if do_math:
-            # Actual UPCAT: 50 items / 60 min = 72s per item
-            time_budget_math = max(10, int((math_items / 50) * 60))
-            spi_math = 72  # fixed per UPCAT spec
-            status.info("📐 Generating UPCAT Math items — Gemini is writing questions, solutions & distractor analysis…")
-            prog.progress(10)
-            custom_m = build_custom_section(
-                st.session_state.get('use_custom_math', False),
-                st.session_state.get('custom_competencies_math', ''),
-                "Mathematics"
-            )
-            math_p = MATH_PROMPT.format(
-                num_items=math_items,
-                difficulty=difficulty,
-                diff_instruction=diff_instruction,
-                custom_section=custom_m,
-                topic_weights=build_topic_str(MATH_TOPIC_WEIGHTS),
-                critical_rules=MATH_CRITICAL_RULES,
-                time_budget=time_budget_math,
-                spi_math=spi_math,
-            )
-            math_d = generate_subtest(model, math_p, "Mathematics")
+            status.info("📐 Generating Mathematics items from your competencies...")
+            prog.progress(8)
+            math_prompt = build_math_prompt(math_comp, math_items, difficulty, diff_instruction)
+            math_d = generate_subtest(model, MATH_SYSTEM_PROMPT, math_prompt, "Mathematics")
             new_data['math'] = math_d
             prog.progress(50)
             status.success(f"✅ Math: {len(math_d['items'])} items generated!")
-
+        
         if do_sci:
-            # Actual UPCAT: 45 items / 45 min = 60s per item
-            time_budget_sci = max(10, int((sci_items / 45) * 45))
-            spi_sci = 60  # fixed per UPCAT spec
-            status.info("🔬 Generating UPCAT Science items (passage-based, data tables, conceptual)…")
-            prog.progress(55 if do_math else 10)
-            custom_s = build_custom_section(
-                st.session_state.get('use_custom_sci', False),
-                st.session_state.get('custom_competencies_sci', ''),
-                "Science"
-            )
-            sci_p = SCI_PROMPT.format(
-                num_items=sci_items,
-                difficulty=difficulty,
-                diff_instruction=diff_instruction,
-                custom_section=custom_s,
-                topic_weights=build_topic_str(SCI_TOPIC_WEIGHTS),
-                critical_rules=SCI_CRITICAL_RULES,
-                time_budget=time_budget_sci,
-                spi_sci=spi_sci,
-            )
-            sci_d = generate_subtest(model, sci_p, "Science")
+            status.info("🔬 Generating Science items from your competencies...")
+            prog.progress(55 if do_math else 8)
+            sci_prompt = build_sci_prompt(sci_comp, sci_items, difficulty, diff_instruction)
+            sci_d = generate_subtest(model, SCI_SYSTEM_PROMPT, sci_prompt, "Science")
             new_data['sci'] = sci_d
             prog.progress(96)
             status.success(f"✅ Science: {len(sci_d['items'])} items generated!")
-
+        
         prog.progress(100)
         m_c = len(new_data.get('math', {}).get('items', []))
         s_c = len(new_data.get('sci', {}).get('items', []))
-        status.success(f"🎉 Ready — Math: {m_c} items · Science: {s_c} items · {difficulty} difficulty")
-
+        status.success(f"🎉 Ready — Math: {m_c} items · Science: {s_c} items · {difficulty}")
+        
         st.session_state.update({
             'test_data': new_data,
             'user_answers_math': {}, 'user_answers_sci': {},
             'flagged_items': set(),
-            'submitted': False, 'math_submitted': False, 'sci_submitted': False,
-            'math_started': False, 'sci_started': False,
+            'submitted': False,
             'math_start_time': None, 'sci_start_time': None,
             'elapsed_math': 0, 'elapsed_sci': 0,
         })
-        time.sleep(0.8)
+        time.sleep(0.6)
         st.rerun()
-
+    
     except json.JSONDecodeError as e:
-        st.error(f"❌ JSON parse error — try Gemini 2.5 Pro for better compliance. Detail: {str(e)[:200]}")
+        st.error(f"❌ JSON parse error — model returned malformed JSON. Try Gemini 2.5 Pro. Detail: {str(e)[:300]}")
     except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
+        st.error(f"❌ Generation error: {str(e)[:500]}")
 
 # ==========================================
-# 🚀 HERO
+# HERO
 # ==========================================
 st.markdown("""
-<div class='hero-shell' role='banner'>
-  <div class='hero-bg'></div>
-  <div class='hero-grid' aria-hidden='true'></div>
-  <div class='hero-glow-math' aria-hidden='true'></div>
-  <div class='hero-glow-sci' aria-hidden='true'></div>
-  <div class='hero-inner'>
-    <div class='hero-pill'>🧮 UPCAT Science &amp; Math Elite Simulator · v2.0</div>
-    <h1 class='hero-title'><em>Padayon!</em><br>Agham at Matematika</h1>
-    <p class='hero-sub'>
-      Research-based psychometric simulation of the UPCAT Mathematics (50 items · 60 min · no calculator)
+<div class="hero" role="banner">
+  <div class="hero-noise"></div>
+  <div class="hero-glow-l"></div>
+  <div class="hero-glow-r"></div>
+  <div class="hero-inner">
+    <div class="hero-eyebrow">🎓 UPCAT Elite Simulator · March 2026 Edition</div>
+    <h1 class="hero-title">
+      <span class="accent">Padayon!</span><br>
+      <span class="accent2">Agham</span> at Matematika
+    </h1>
+    <p class="hero-sub">
+      Research-grade psychometric simulation of the UPCAT Mathematics (50 items · 60 min · no calculator)
       and Science (45 items · 45 min · ~60% passage-based) subtests.
-      135,000+ applicants compete for ~18,000 admission notices yearly.
-      Train at the level that makes Iskos and Iskas.
+      Competency-locked: every question maps to <em>your</em> DepEd MELCs.
+      135,000+ applicants. ~7.8% first-choice qualification rate. Train smarter.
     </p>
-    <div class='hero-divider'></div>
-    <div class='hero-stats'>
-      <div><div class='h-stat-num'>135k+</div><div class='h-stat-lbl'>Applicants / Year</div></div>
-      <div><div class='h-stat-num'>13.3%</div><div class='h-stat-lbl'>Any Qualification Rate</div></div>
-      <div><div class='h-stat-num'>&lt;8%</div><div class='h-stat-lbl'>1st Choice Prog Rate</div></div>
-      <div><div class='h-stat-num'>50+45</div><div class='h-stat-lbl'>Math + Science Items</div></div>
-      <div><div class='h-stat-num'>−0.25</div><div class='h-stat-lbl'>Wrong Answer Penalty</div></div>
+    <div class="hero-rule"></div>
+    <div class="hero-stats">
+      <div><div class="hs-num">135k+</div><div class="hs-lbl">Applicants / Year</div></div>
+      <div><div class="hs-num">7.8%</div><div class="hs-lbl">1st Choice Rate</div></div>
+      <div><div class="hs-num">50+45</div><div class="hs-lbl">Items (Full UPCAT)</div></div>
+      <div><div class="hs-num">−0.25</div><div class="hs-lbl">Wrong Penalty (RMW)</div></div>
+      <div><div class="hs-num">60%</div><div class="hs-lbl">Sci. Passage-Based</div></div>
     </div>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
 st.markdown("""
-<div class='notice'>
-  <span class='notice-icon'>ℹ️</span>
-  <div><strong>Disclaimer:</strong> All items are AI-generated for practice only. UPG formulas use independent research modeling based on published UP admissions data — not official UP methodology. 
-  This simulator focuses on <strong>Mathematics and Science only</strong>. The 13.3% passing rate (UPCAT 2025 data) includes waitlisted applicants; 
-  <strong>actual first-choice program qualification is significantly lower</strong> (~8% or less).</div>
+<div class="notice">
+  <span class="ni">ℹ️</span>
+  <div><strong>March 2026 Edition:</strong> Competency-locked generation — items are generated <em>exclusively</em> from your provided DepEd MELCs. 
+  LaTeX renders properly via KaTeX. Graphs and data visualizations are auto-generated for applicable Science items. 
+  UPG is a research model — not official UP methodology.</div>
 </div>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 📋 CUSTOM COMPETENCY INPUT
+# COMPETENCY INPUT — THE MAIN SECTION
 # ==========================================
-st.markdown("""
-<div class='sec-hdr'><span class='sec-hdr-text'>📋 Custom Competency Input</span><div class='sec-hdr-line'></div></div>
-""", unsafe_allow_html=True)
+st.markdown('<div class="sec-title">📋 Competency Input (Required)</div>', unsafe_allow_html=True)
 
 st.markdown("""
-<div class='notice sci'>
-  <span class='notice-icon'>💡</span>
-  <div>Paste specific DepEd MELCs (Most Essential Learning Competencies) to target those exact skills. 
-  Leave blank to use the default UPCAT topic distribution. Source MELCs from <em>curriculum.deped.gov.ph</em> or your textbook.</div>
+<div class="notice sci">
+  <span class="ni">🔑</span>
+  <div><strong>This simulator ONLY generates questions from competencies you provide.</strong> 
+  Paste DepEd MELCs (Most Essential Learning Competencies) below — one per line. 
+  The AI will generate items exclusively targeting these competencies, cycling through them evenly.
+  Source MELCs from <em>curriculum.deped.gov.ph</em>, your textbook table of contents, or teacher's guide.</div>
 </div>
 """, unsafe_allow_html=True)
 
 col_c1, col_c2 = st.columns(2)
+
 with col_c1:
-    st.markdown('<div class="comp-card"><span class="comp-label math">🔢 Math Competencies</span></div>', unsafe_allow_html=True)
-    use_custom_math = st.checkbox("Enable custom Math competencies", key="use_custom_math_cb")
-    custom_math = st.text_area("Math competencies",
-        height=140, label_visibility="collapsed",
-        placeholder="Example:\n• Factors polynomials completely (M8AL-Ia-b-1)\n• Solves problems involving rational algebraic expressions\n• Illustrates quadratic inequalities and their graphs",
-        key="custom_math_input")
-    st.session_state['use_custom_math'] = use_custom_math
-    st.session_state['custom_competencies_math'] = custom_math
+    st.markdown("""
+    <div class="comp-wrap math">
+      <div class="comp-head">🔢 Mathematics Competencies</div>
+      <div class="comp-sub">One competency per line · MELCs format recommended</div>
+    </div>
+    """, unsafe_allow_html=True)
+    math_comp_input = st.text_area(
+        "Math competencies",
+        value=st.session_state.get('competencies_math', ''),
+        height=200,
+        label_visibility="collapsed",
+        placeholder="Paste your competencies here, one per line. Examples:\n\nFactors completely different types of polynomials (M8AL-Ia-b-1)\nSolves problems involving rational algebraic expressions\nIllustrates quadratic inequalities\nSolves quadratic equations by factoring\nGraphs a quadratic function with different values of a, h, and k\nSolves problems involving quadratic functions",
+        key="math_comp_input_field"
+    )
+    st.session_state['competencies_math'] = math_comp_input
+    comp_count_m = len([l for l in math_comp_input.strip().split('\n') if l.strip()])
+    if comp_count_m > 0:
+        st.caption(f"✅ {comp_count_m} competencies · ~{math_items} items → ~{max(1, math_items//comp_count_m)} items/competency")
+    else:
+        st.caption("⚠️ Enter at least 1 competency to generate Math items.")
 
 with col_c2:
-    st.markdown('<div class="comp-card"><span class="comp-label sci">🔬 Science Competencies</span></div>', unsafe_allow_html=True)
-    use_custom_sci = st.checkbox("Enable custom Science competencies", key="use_custom_sci_cb")
-    custom_sci = st.text_area("Science competencies",
-        height=140, label_visibility="collapsed",
-        placeholder="Example:\n• Describe the different levels of biological organization\n• Explain how energy is transformed in photosynthesis\n• Describe the process of meiosis and its significance in heredity",
-        key="custom_sci_input")
-    st.session_state['use_custom_sci'] = use_custom_sci
-    st.session_state['custom_competencies_sci'] = custom_sci
+    st.markdown("""
+    <div class="comp-wrap sci">
+      <div class="comp-head">🔬 Science Competencies</div>
+      <div class="comp-sub">One competency per line · include discipline (Bio/Chem/Physics/ES)</div>
+    </div>
+    """, unsafe_allow_html=True)
+    sci_comp_input = st.text_area(
+        "Science competencies",
+        value=st.session_state.get('competencies_sci', ''),
+        height=200,
+        label_visibility="collapsed",
+        placeholder="Paste your competencies here, one per line. Examples:\n\n[Biology] Describe the structure and functions of cell organelles\n[Biology] Explain the process of mitosis and meiosis\n[Chemistry] Balance chemical equations\n[Physics] Apply Newton's Laws to solve problems\n[Earth Science] Describe the layers of the Earth\n[Biology] Explain how photosynthesis produces glucose",
+        key="sci_comp_input_field"
+    )
+    st.session_state['competencies_sci'] = sci_comp_input
+    comp_count_s = len([l for l in sci_comp_input.strip().split('\n') if l.strip()])
+    if comp_count_s > 0:
+        st.caption(f"✅ {comp_count_s} competencies · ~{sci_items} items → ~{max(1, sci_items//comp_count_s)} items/competency")
+    else:
+        st.caption("⚠️ Enter at least 1 competency to generate Science items.")
 
 # ==========================================
-# 🚀 GENERATE
+# GENERATE SECTION
 # ==========================================
-st.markdown("""
-<div class='sec-hdr'><span class='sec-hdr-text'>🚀 Generate Simulation</span><div class='sec-hdr-line'></div></div>
-""", unsafe_allow_html=True)
+st.markdown('<div class="sec-title">🚀 Generate Simulation</div>', unsafe_allow_html=True)
 
-spi_math_display = 72  # UPCAT: 60min / 50 items
-spi_sci_display = 60   # UPCAT: 45min / 45 items
 time_m = max(10, int((math_items / 50) * 60))
 time_s = max(10, int((sci_items / 45) * 45))
 
-st.markdown(f"""
-<div class='subtest-grid'>
-  <div class='subtest-card math'>
-    <div class='sc-icon'>🔢</div>
-    <div class='sc-title'>Mathematics</div>
-    <div class='sc-meta'>{math_items} items · ~{time_m} min · no calculator · ~{spi_math_display}s/item budget</div>
-    <div class='sc-detail'>
-      ~58% JHS Algebra/Geometry/Number Sense · ~22% Stats/Sequences/Exponents · ~10% Functions · ~10% Trig/SHS (rare)<br>
-      <strong style='color:#58a6ff;'>No calculator. All answers reachable in ≤90 seconds by hand or mental math.</strong>
+info_col1, info_col2 = st.columns(2)
+with info_col1:
+    st.markdown(f"""
+    <div style='background:var(--bg1);border:1px solid var(--border2);border-top:2px solid var(--blue);border-radius:var(--r2);padding:16px 20px;'>
+      <div style='font-family:var(--font-mono);font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--blue);margin-bottom:8px;'>🔢 Mathematics</div>
+      <div style='font-family:var(--font-display);font-size:1rem;font-weight:700;color:var(--fg0);margin-bottom:6px;'>{math_items} Items · ~{time_m} min · No Calculator</div>
+      <div style='font-family:var(--font-body);font-size:0.8rem;color:var(--fg1);line-height:1.7;'>
+        72 sec/item budget · Filipino contexts · Full LaTeX rendering ·
+        <strong style="color:var(--blue);">Items locked to your competencies only.</strong>
+      </div>
     </div>
-  </div>
-  <div class='subtest-card sci'>
-    <div class='sc-icon'>🔬</div>
-    <div class='sc-title'>Science</div>
-    <div class='sc-meta'>{sci_items} items · ~{time_s} min · passage-based · ~{spi_sci_display}s/item budget</div>
-    <div class='sc-detail'>
-      Bio ~38% · Earth Sci ~26% · Chem ~21% · Physics ~15%<br>
-      <strong style='color:#39d0c5;'>~60% stimulus-based (passages, data tables, diagrams). Read the stimulus before the question.</strong>
-    </div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
+with info_col2:
+    st.markdown(f"""
+    <div style='background:var(--bg1);border:1px solid var(--border2);border-top:2px solid var(--teal);border-radius:var(--r2);padding:16px 20px;'>
+      <div style='font-family:var(--font-mono);font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--teal);margin-bottom:8px;'>🔬 Science</div>
+      <div style='font-family:var(--font-display);font-size:1rem;font-weight:700;color:var(--fg0);margin-bottom:6px;'>{sci_items} Items · ~{time_s} min · 60% Passage-Based</div>
+      <div style='font-family:var(--font-body);font-size:0.8rem;color:var(--fg1);line-height:1.7;'>
+        60 sec/item budget · Data tables · Auto-generated graphs ·
+        <strong style="color:var(--teal);">Items locked to your competencies only.</strong>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
 g1, g2, g3 = st.columns([2,1,1])
 with g1:
-    gen_both = st.button(f"🚀 Generate Both — {math_items + sci_items} Items Total",
-        type="primary", use_container_width=True)
+    gen_both = st.button(f"🚀 Generate Both ({math_items + sci_items} Items Total)", type="primary", use_container_width=True)
 with g2:
-    gen_math = st.button(f"🔢 Math Only", use_container_width=True)
+    gen_math = st.button(f"🔢 Math Only ({math_items} items)", use_container_width=True)
 with g3:
-    gen_sci = st.button(f"🔬 Science Only", use_container_width=True)
+    gen_sci = st.button(f"🔬 Science Only ({sci_items} items)", use_container_width=True)
 
 if gen_both: run_generation(True, True)
 elif gen_math: run_generation(True, False)
 elif gen_sci: run_generation(False, True)
 
 # ==========================================
-# 📝 EXAM INTERFACE
+# EXAM INTERFACE
 # ==========================================
 if st.session_state.get('test_data') and not st.session_state.get('submitted'):
     test_data = st.session_state['test_data']
@@ -1586,41 +1561,31 @@ if st.session_state.get('test_data') and not st.session_state.get('submitted'):
     total_sci  = len(sci_items_data)
     total_all  = total_math + total_sci
     total_ans  = answered_math + answered_sci
-
     pct_m = (answered_math / max(1, total_math)) * 100
     pct_s = (answered_sci  / max(1, total_sci)) * 100
 
     # Progress bars
     if total_math > 0 and total_sci > 0:
-        p1, p2 = st.columns(2)
-        with p1:
+        pb1, pb2 = st.columns(2)
+        with pb1:
             st.markdown(f"""
-            <div class='prog-wrap'>
-              <div class='prog-row'>
-                <span>🔢 MATH — {answered_math}/{total_math}</span>
-                <span>{pct_m:.0f}%</span>
-              </div>
-              <div class='prog-track'><div class='prog-fill-math' style='width:{pct_m:.1f}%'></div></div>
-            </div>
-            """, unsafe_allow_html=True)
-        with p2:
+            <div class="pbar-wrap">
+              <div class="pbar-row"><span>🔢 MATH — {answered_math}/{total_math}</span><span>{pct_m:.0f}%</span></div>
+              <div class="pbar-track"><div class="pbar-fill-m" style="width:{pct_m:.1f}%"></div></div>
+            </div>""", unsafe_allow_html=True)
+        with pb2:
             st.markdown(f"""
-            <div class='prog-wrap'>
-              <div class='prog-row'>
-                <span>🔬 SCIENCE — {answered_sci}/{total_sci}</span>
-                <span>{pct_s:.0f}%</span>
-              </div>
-              <div class='prog-track'><div class='prog-fill-sci' style='width:{pct_s:.1f}%'></div></div>
-            </div>
-            """, unsafe_allow_html=True)
+            <div class="pbar-wrap">
+              <div class="pbar-row"><span>🔬 SCIENCE — {answered_sci}/{total_sci}</span><span>{pct_s:.0f}%</span></div>
+              <div class="pbar-track"><div class="pbar-fill-s" style="width:{pct_s:.1f}%"></div></div>
+            </div>""", unsafe_allow_html=True)
 
     st.markdown("""
-    <div class='notice warn'>
-      <span class='notice-icon'>⚠️</span>
-      <div><strong>RMW Scoring Active:</strong> +1.00 correct · −0.25 wrong · 0.00 blank.
-      For Math: no calculator — all arithmetic must be done by hand or mentally.
-      For Science: read the stimulus first, then the question.
-      Only guess when you can eliminate at least 2 options with confidence.</div>
+    <div class="notice warn">
+      <span class="ni">⚠️</span>
+      <div><strong>RMW Scoring:</strong> +1.00 correct · −0.25 wrong · 0.00 blank.
+      Only guess when you can eliminate ≥2 options. For Math: show work mentally — no calculator.
+      For Science: read the stimulus <em>before</em> the question.</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1633,28 +1598,33 @@ if st.session_state.get('test_data') and not st.session_state.get('submitted'):
             remaining = max(0, 2700 - int(time.time() - st.session_state['sci_start_time']))
         else:
             remaining = 3600 if active == 'math' else 2700
-        label = "🔬" if active == "sci" else "🔢"
-        tcls = "sci" if active == "sci" else ""
-
+        lbl = "🔬" if active == "sci" else "🔢"
+        tcls = "s" if active == "sci" else ""
         st.components.v1.html(f"""
-        <div id="tc" class="timer-chip {tcls}">{label} <span id="tv">--:--</span></div>
+        <div id="tc" class="timer {tcls}">{lbl} <span id="tv">--:--</span></div>
+        <style>
+        .timer{{position:fixed;top:16px;right:20px;z-index:99999;font-family:'IBM Plex Mono',monospace;font-size:.9rem;font-weight:600;padding:8px 18px;border-radius:24px;border:1px solid rgba(77,159,255,.3);background:#0e1520;color:#4d9fff;box-shadow:0 4px 16px rgba(0,0,0,.5);letter-spacing:.06em;}}
+        .timer.s{{color:#2dd4bf;border-color:rgba(45,212,191,.3);}}
+        .timer.w{{color:#fbbf24;border-color:rgba(251,191,36,.4);}}
+        .timer.d{{color:#f87171;border-color:rgba(248,113,113,.4);animation:pulse 1s infinite;}}
+        @keyframes pulse{{0%,100%{{opacity:1;}}50%{{opacity:.6;}}}}
+        </style>
         <script>
         (function(){{
           var tl={remaining};
           function tick(){{
             if(tl<0)tl=0;
             var m=Math.floor(tl/60),s=tl%60;
-            var el=document.getElementById('tv');
-            var box=document.getElementById('tc');
+            var el=document.getElementById('tv'),box=document.getElementById('tc');
             if(el){{
               el.textContent=(m<10?'0':'')+m+':'+(s<10?'0':'')+s;
-              if(tl<=300&&tl>60)box.className='timer-chip {tcls} warn';
-              if(tl<=60){{box.className='timer-chip {tcls} danger';}}
-              if(tl<=0)el.textContent='00:00 · TIME UP';
+              if(tl<=300&&tl>60)box.className='timer {tcls} w';
+              if(tl<=60)box.className='timer {tcls} d';
+              if(tl<=0)el.textContent='TIME UP';
             }}
             if(tl>0){{tl--;setTimeout(tick,1000);}}
           }}
-          setTimeout(tick,200);
+          setTimeout(tick,300);
         }})();
         </script>
         """, height=0)
@@ -1678,100 +1648,108 @@ if st.session_state.get('test_data') and not st.session_state.get('submitted'):
             if not items_list: return
             is_math = subtest_key == 'math'
             ans_key = f'user_answers_{subtest_key}'
-            dot_ans_cls = "answered-m" if is_math else "answered-s"
+            dot_cls = "am" if is_math else "as"
+
+            # Start timer
+            if not st.session_state.get(f'{subtest_key}_start_time'):
+                st.session_state[f'{subtest_key}_start_time'] = time.time()
+                st.session_state['active_subtest'] = subtest_key
 
             # Navigator
             if show_nav:
-                nav_html = f"""
-                <div class='item-nav'>
-                  <div class='nav-title'>{'Math' if is_math else 'Science'} Navigator — click to jump to item</div>
-                  <div class='nav-grid'>"""
+                nav_html = f'<div class="nav-box"><div class="nav-title">{"Math" if is_math else "Science"} Navigator — click to scroll to item</div><div class="nav-grid">'
                 for q in items_list:
                     inum = q.get('item_number')
                     fkey = f"{subtest_key}_{inum}"
                     is_a = inum in st.session_state[ans_key]
                     is_f = fkey in flagged
-                    cls = "flagged" if is_f else (dot_ans_cls if is_a else "")
-                    nav_html += f"""<div class='nav-dot {cls}' onclick="document.getElementById('{subtest_key}_{inum}').scrollIntoView({{behavior:'smooth'}})" title='Item {inum}'>{inum}</div>"""
-                nav_html += "</div></div>"
+                    cls = "fl" if is_f else (dot_cls if is_a else "")
+                    nav_html += f'<div class="nav-dot {cls}" onclick="document.getElementById(\'{subtest_key}_{inum}\').scrollIntoView({{behavior:\'smooth\'}})" title="Item {inum}">{inum}</div>'
+                nav_html += '</div></div>'
                 st.markdown(nav_html, unsafe_allow_html=True)
 
-            # Start timer on first render
-            if not st.session_state.get(f'{subtest_key}_start_time'):
-                st.session_state[f'{subtest_key}_start_time'] = time.time()
-                st.session_state['active_subtest'] = subtest_key
-
             for q in items_list:
-                inum       = q.get('item_number')
-                topic      = q.get('topic', '')
-                subtopic   = q.get('subtopic', '')
-                grade_orig = q.get('grade_level_origin', '')
-                qtext      = q.get('question_text', '')
-                stimulus   = q.get('stimulus', None)
-                stim_type  = q.get('stimulus_type', None)
-                is_ans     = inum in st.session_state[ans_key]
-                is_flg     = f"{subtest_key}_{inum}" in flagged
+                inum      = q.get('item_number')
+                topic     = q.get('topic', '')
+                subtopic  = q.get('subtopic', '')
+                grade_o   = q.get('grade_level_origin', '')
+                qtext     = q.get('question_text', '')
+                stimulus  = q.get('stimulus', None)
+                stim_type = q.get('stimulus_type', None)
+                chart_data= q.get('chart', None)
+                comp      = q.get('competency', '')
+                is_ans    = inum in st.session_state[ans_key]
+                is_flg    = f"{subtest_key}_{inum}" in flagged
+                sci_disc  = q.get('science_discipline', '')
 
-                # Card class
+                # Card classes
                 card_cls = "q-card"
                 if not is_math: card_cls += " sci"
                 if is_ans: card_cls += " answered"
                 if is_flg: card_cls += " flagged"
 
-                # Short topic label
-                short = topic.split(' — ')[0] if ' — ' in topic else topic
-                short = short[:28] + ('…' if len(short) > 28 else '')
-                sci_disc = q.get('science_discipline', '')
+                short_topic = topic[:32] + ('…' if len(topic) > 32 else '')
+                short_comp  = comp[:50] + ('…' if len(comp) > 50 else '') if comp else ''
 
                 st.markdown(f"""
-                <div class='{card_cls}' id='{subtest_key}_{inum}'>
-                  <div class='q-meta'>
-                    <span class='q-num {"sci" if not is_math else ""}'>
-                      {'MTH' if is_math else 'SCI'} {inum:02d}
-                    </span>
-                    <span class='q-tag' title='{topic}'>{short}</span>
-                    {f"<span class='q-tag'>{grade_orig}</span>" if grade_orig else ""}
-                    {f"<span class='q-tag'>{sci_disc}</span>" if sci_disc and not is_math else ""}
-                    {f"<span class='q-tag' style='color:var(--amber); border-color:rgba(210,153,34,0.3);'>📊 Data</span>" if stimulus else ""}
-                    {"<span style='font-size:0.85rem; margin-left:auto;'>🚩</span>" if is_flg else ""}
-                    {"<span style='font-size:0.85rem; margin-left:2px;'>✅</span>" if is_ans else ""}
+                <div class="{card_cls}" id="{subtest_key}_{inum}">
+                  <div class="q-meta">
+                    <span class="q-badge {"math" if is_math else "sci"}">{"MTH" if is_math else "SCI"} {inum:02d}</span>
+                    <span class="q-badge tag" title="{topic}">{short_topic}</span>
+                    {f'<span class="q-badge tag">{grade_o}</span>' if grade_o else ''}
+                    {f'<span class="q-badge tag">{sci_disc}</span>' if sci_disc and not is_math else ''}
+                    {f'<span class="q-badge tag" title="{comp}">📍 {short_comp}</span>' if short_comp else ''}
+                    {"<span class='q-badge flag'>🚩 Flagged</span>" if is_flg else ""}
+                    {"<span class='q-badge ok'>✅ Answered</span>" if is_ans else ""}
                   </div>
                 """, unsafe_allow_html=True)
 
                 # Render stimulus
                 if stimulus:
                     if stim_type == "DATA_TABLE":
+                        # Ensure table has proper class
+                        tbl_html = stimulus.replace('<table', '<table class="sci-tbl"')
                         st.markdown(f"""
-                        <div class='sci-data-box'>
-                          <div class='stim-label data'>📊 Experimental Data / Table</div>
-                          {stimulus}
+                        <div class="stim-data">
+                          <span class="stim-label d">📊 Experimental Data Table</span>
+                          {tbl_html}
                         </div>
                         """, unsafe_allow_html=True)
-                    elif stim_type == "DIAGRAM_TEXT":
+                    elif stim_type == "DIAGRAM":
                         st.markdown(f"""
-                        <div class='sci-data-box' style='border-left-color: var(--purple);'>
-                          <div class='stim-label diagram'>🔎 Figure / Diagram</div>
+                        <div class="stim-data" style="border-left-color:var(--purple);">
+                          <span class="stim-label g">🔎 Figure / Diagram</span>
                           {stimulus}
                         </div>
                         """, unsafe_allow_html=True)
                     else:  # TEXT_PASSAGE
                         st.markdown(f"""
-                        <div class='sci-passage'>
-                          <div class='stim-label passage'>📄 Read carefully before answering</div>
+                        <div class="stim-passage">
+                          <span class="stim-label p">📄 Read carefully before answering</span>
                           {stimulus}
                         </div>
                         """, unsafe_allow_html=True)
 
-                # Question — use st.markdown for LaTeX rendering
-                st.markdown(f"<div class='q-stem'>{qtext}</div>", unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)  # close q-card
+                # Render chart if present
+                if chart_data and isinstance(chart_data, dict):
+                    try:
+                        svg = build_svg_from_data(chart_data)
+                        if svg:
+                            st.markdown(f'<div class="chart-wrap">{svg}</div>', unsafe_allow_html=True)
+                    except Exception:
+                        pass
 
+                # Question text — use st.markdown for KaTeX
+                st.markdown(f"<div class='q-stem'>{qtext}</div>", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+
+                # Answer options
                 opts = q.get('options', {})
                 choices = [
-                    f"A) {opts.get('A','')}",
-                    f"B) {opts.get('B','')}",
-                    f"C) {opts.get('C','')}",
-                    f"D) {opts.get('D','')}",
+                    f"A)  {render_math_text(opts.get('A',''))}",
+                    f"B)  {render_math_text(opts.get('B',''))}",
+                    f"C)  {render_math_text(opts.get('C',''))}",
+                    f"D)  {render_math_text(opts.get('D',''))}",
                 ]
                 choice = st.radio(
                     f"Answer {subtest_key} {inum}",
@@ -1781,45 +1759,42 @@ if st.session_state.get('test_data') and not st.session_state.get('submitted'):
                     label_visibility="collapsed"
                 )
                 if choice:
-                    st.session_state[ans_key][inum] = choice[0]
+                    st.session_state[ans_key][inum] = choice[0].upper()
 
+                # Flag button
                 if enable_flag:
                     fkey = f"{subtest_key}_{inum}"
-                    flbl = "🚩 Unflag" if fkey in flagged else "🚩 Flag for review"
+                    flbl = "🚩 Unflag item" if fkey in flagged else "🚩 Flag for review"
                     if st.button(flbl, key=f"fl_{subtest_key}_{inum}"):
                         if fkey in flagged: flagged.discard(fkey)
                         else: flagged.add(fkey)
                         st.session_state['flagged_items'] = flagged
                         st.rerun()
 
-                st.markdown("<hr style='border:none;border-top:1px solid var(--border-mid);margin:8px 0 14px;'>",
-                    unsafe_allow_html=True)
+                st.markdown("<hr style='border:none;border-top:1px solid var(--border);margin:10px 0 14px;'>", unsafe_allow_html=True)
 
     for tab, key, items in active_tabs:
         render_subtest(tab, key, items)
 
-    # Submit section
+    # Submit
     st.markdown("<br>", unsafe_allow_html=True)
     blank = total_all - total_ans
     flagged_count = len(flagged)
-
     st.markdown(f"""
-    <div class='stat-row'>
-      <div class='stat-pill'><div class='sp-num' style='color:var(--green);'>{total_ans}</div><div class='sp-lbl'>Answered</div></div>
-      <div class='stat-pill'><div class='sp-num' style='color:var(--amber);'>{flagged_count}</div><div class='sp-lbl'>Flagged</div></div>
-      <div class='stat-pill'><div class='sp-num' style='color:var(--fg-muted);'>{blank}</div><div class='sp-lbl'>Blank (0 pts)</div></div>
-      <div class='stat-pill'><div class='sp-num' style='color:var(--math-primary);'>{total_all}</div><div class='sp-lbl'>Total Items</div></div>
-    </div>
-    """, unsafe_allow_html=True)
+    <div class="stat-row">
+      <div class="stat-pill"><div class="sp-n" style="color:var(--green);">{total_ans}</div><div class="sp-l">Answered</div></div>
+      <div class="stat-pill"><div class="sp-n" style="color:var(--amber);">{flagged_count}</div><div class="sp-l">Flagged</div></div>
+      <div class="stat-pill"><div class="sp-n" style="color:var(--fg2);">{blank}</div><div class="sp-l">Blank (0 pts)</div></div>
+      <div class="stat-pill"><div class="sp-n" style="color:var(--blue);">{total_all}</div><div class="sp-l">Total Items</div></div>
+    </div>""", unsafe_allow_html=True)
 
     c1s, c2s, c3s = st.columns([1,2,1])
     with c2s:
         if blank > 0:
-            st.warning(f"⚠️ {blank} item(s) unanswered — scored 0 (no penalty). Only guess if you can eliminate ≥2 options.")
+            st.warning(f"⚠️ {blank} unanswered — scored 0. Only guess if you can eliminate ≥2 options.")
         if flagged_count > 0:
-            st.info(f"🚩 {flagged_count} item(s) flagged for review.")
-        if st.button("📥 Submit & View Full UPG Report + Deep Feedback",
-            type="primary", use_container_width=True):
+            st.info(f"🚩 {flagged_count} flagged for review.")
+        if st.button("📥 Submit & View Full UPG Report", type="primary", use_container_width=True):
             st.session_state['submitted'] = True
             if st.session_state.get('math_start_time'):
                 st.session_state['elapsed_math'] = time.time() - st.session_state['math_start_time']
@@ -1828,7 +1803,7 @@ if st.session_state.get('test_data') and not st.session_state.get('submitted'):
             st.rerun()
 
 # ==========================================
-# 📊 RESULTS ENGINE
+# RESULTS ENGINE
 # ==========================================
 if st.session_state.get('submitted') and st.session_state.get('test_data'):
     st.balloons()
@@ -1841,13 +1816,13 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
     sci_items_data  = test_data.get('sci', {}).get('items', [])
 
     def score_subtest(items, user_ans):
-        total   = len(items)
-        correct = sum(1 for q in items if user_ans.get(q['item_number']) == q['correct_answer'])
-        answered= sum(1 for v in user_ans.values() if v)
-        wrong   = answered - correct
-        blank   = total - answered
-        raw     = max(0.0, correct - 0.25 * wrong)
-        pct     = raw / max(1, total)
+        total    = len(items)
+        correct  = sum(1 for q in items if user_ans.get(q['item_number']) == q.get('correct_answer'))
+        answered = sum(1 for v in user_ans.values() if v)
+        wrong    = answered - correct
+        blank    = total - answered
+        raw      = max(0.0, correct - 0.25 * wrong)
+        pct      = raw / max(1, total)
         return total, correct, wrong, blank, raw, pct
 
     if math_items_data:
@@ -1860,85 +1835,68 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
     else:
         s_total, s_correct, s_wrong, s_blank, s_raw, s_pct = 0,0,0,0,0.0,0.0
 
-    # ── SEPARATE MATH vs SCIENCE UPG ──
-    # Math grades
-    math_grades = [g8_math, g9_math, g10_math, g11_precalc, g11_calc, g11_stats, g11_genmath]
-    sci_grades  = [g8_sci, g9_sci, g10_sci, g11_bio1, g11_bio2, g11_earth]
+    # Grades
+    math_grades   = [g8_math, g9_math, g10_math, g11_precalc, g11_calc, g11_stats, g11_genmath]
+    sci_grades    = [g8_sci, g9_sci, g10_sci, g11_bio1, g11_bio2, g11_earth]
+    math_grade_avg= float(np.mean(math_grades))
+    sci_grade_avg = float(np.mean(sci_grades))
+    all_grade_avg = float(np.mean(math_grades + sci_grades))
+    avg_mod       = (jhs_mod + shs_mod) / 2
 
-    math_grade_avg = float(np.mean(math_grades))
-    sci_grade_avg  = float(np.mean(sci_grades))
-    all_grade_avg  = float(np.mean(math_grades + sci_grades))
-
-    # School modifier
-    avg_mod = (jhs_mod + shs_mod) / 2
-
-    # Grade UPG per subject (raw: maps 75→3.0, 100→1.0, 60→5.0)
     def grade_to_upg(avg, mod):
         raw = 5.0 - ((avg - 75) / 25) * 4.0
         return max(1.0, min(5.0, raw - mod))
 
-    math_grade_upg = grade_to_upg(math_grade_avg, avg_mod)
-    sci_grade_upg  = grade_to_upg(sci_grade_avg, avg_mod)
+    math_grade_upg    = grade_to_upg(math_grade_avg, avg_mod)
+    sci_grade_upg     = grade_to_upg(sci_grade_avg, avg_mod)
     overall_grade_upg = grade_to_upg(all_grade_avg, avg_mod)
 
-    # UPCAT UPG per subtest (60% weight)
-    # UPCAT Math contributes to UPG based on math score
-    # Science also contributes — combined for overall UPG
-    # For SEPARATE Math and Science UPG:
-    #   Subject UPG = 0.40 * grade_UPG_subject + 0.60 * upcat_UPG_subject
-
-    def upcat_pct_to_upg(pct, mean_b, sigma_v):
+    def upcat_to_upg(pct, mean_b, sigma_v):
         z = (pct - mean_b) / sigma_v
         return max(1.0, min(5.0, 2.75 - z * 0.55)), z
 
     if math_items_data:
-        math_upcat_upg, math_z = upcat_pct_to_upg(m_pct, MEAN_BASELINE, SIGMA)
+        math_upcat_upg, math_z = upcat_to_upg(m_pct, MEAN_BASELINE, SIGMA)
     else:
         math_upcat_upg, math_z = overall_grade_upg, 0.0
 
     if sci_items_data:
-        sci_upcat_upg, sci_z = upcat_pct_to_upg(s_pct, MEAN_BASELINE, SIGMA)
+        sci_upcat_upg, sci_z = upcat_to_upg(s_pct, MEAN_BASELINE, SIGMA)
     else:
         sci_upcat_upg, sci_z = overall_grade_upg, 0.0
 
-    # Final subject UPGs
     math_final_upg = (0.40 * math_grade_upg) + (0.60 * math_upcat_upg)
     sci_final_upg  = (0.40 * sci_grade_upg)  + (0.60 * sci_upcat_upg)
 
-    # Overall UPG (average of what was tested)
     if math_items_data and sci_items_data:
         combined_pct = (m_pct + s_pct) / 2
-        overall_upcat_upg, combined_z = upcat_pct_to_upg(combined_pct, MEAN_BASELINE, SIGMA)
+        overall_upcat_upg, combined_z = upcat_to_upg(combined_pct, MEAN_BASELINE, SIGMA)
         final_upg = (0.40 * overall_grade_upg) + (0.60 * overall_upcat_upg)
     elif math_items_data:
-        combined_pct = m_pct
-        overall_upcat_upg, combined_z = math_upcat_upg, math_z
+        combined_pct, overall_upcat_upg, combined_z = m_pct, math_upcat_upg, math_z
         final_upg = math_final_upg
     else:
-        combined_pct = s_pct
-        overall_upcat_upg, combined_z = sci_upcat_upg, sci_z
+        combined_pct, overall_upcat_upg, combined_z = s_pct, sci_upcat_upg, sci_z
         final_upg = sci_final_upg
 
-    overall_pct = max(0.001, min(0.9999,
-        0.5 * (1 + math.erf(combined_z / math.sqrt(2)))))
-    sim_rank = int(135000 - 135000 * overall_pct)
+    overall_pct = max(0.001, min(0.9999, 0.5 * (1 + math.erf(combined_z / math.sqrt(2)))))
+    sim_rank    = int(135000 - 135000 * overall_pct)
 
-    if   final_upg <= 1.50: verdict = "🏆 Elite — Top tier across all campuses."
+    if   final_upg <= 1.50: verdict = "🏆 Elite — Top tier across all UP campuses."
     elif final_upg <= 2.00: verdict = "✅ Very Strong — Likely qualifies for multiple programs."
     elif final_upg <= 2.30: verdict = "📘 Competitive — Within range for several programs."
     elif final_upg <= 2.60: verdict = "🟡 Borderline — May qualify at less competitive campuses."
-    elif final_upg <= 3.00: verdict = "🟠 Below Threshold — Significant improvement needed."
+    elif final_upg <= 3.00: verdict = "🟠 Below Threshold — Focused improvement needed."
     else:                    verdict = "🔴 Not Yet Ready — Focus on fundamentals first."
 
-    # Topic analysis
     def analyze_topics(items, user_ans):
         td = {}
         for q in items:
-            topic = q.get('topic','Unknown')
-            short = topic.split(' — ')[0] if ' — ' in topic else topic
+            comp  = q.get('competency', q.get('topic', 'Unknown'))
+            short = comp[:40] + ('…' if len(comp) > 40 else '')
             inum  = q.get('item_number')
             ok    = user_ans.get(inum) == q.get('correct_answer')
-            if short not in td: td[short] = {'correct':0,'total':0}
+            if short not in td: td[short] = {'correct': 0, 'total': 0}
             td[short]['total'] += 1
             if ok: td[short]['correct'] += 1
         return td
@@ -1947,193 +1905,157 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
     sci_topics  = analyze_topics(sci_items_data,  u_sci)  if sci_items_data  else {}
 
     # ── RESULTS HERO ──
-    upg_color = "#58a6ff" if final_upg <= 2.3 else ("#d29922" if final_upg <= 2.8 else "#f85149")
+    upg_color = "#4d9fff" if final_upg <= 2.3 else ("#fbbf24" if final_upg <= 2.8 else "#f87171")
     st.markdown(f"""
-    <div class='res-hero'>
-      <div class='res-hero-glow'></div>
-      <div class='upg-label'>University Predicted Grade (UPG)</div>
-      <div class='upg-val' style='color:{upg_color};'>{final_upg:.3f}</div>
-      <div class='upg-verdict'>{verdict}</div>
-      <div style='color:rgba(255,255,255,0.3);font-family:var(--font-mono);font-size:0.62rem;margin-top:10px;letter-spacing:0.1em;position:relative;z-index:1;'>
-        Scale: 1.000 (highest) → 5.000 (lowest) · Simulated rank #{sim_rank:,} of 135,000 applicants · Top {100*(1-overall_pct):.1f}th percentile
-      </div>
-      <div style='color:rgba(255,255,255,0.45);font-family:var(--font-body);font-size:0.82rem;margin-top:8px;position:relative;z-index:1;'>
-        {"✅ Within campus qualification range for at least one UP campus" if final_upg <= 2.80 else "❌ Below standard campus cutoffs — consistent practice needed"}
+    <div class="res-hero">
+      <div class="res-hero-glow"></div>
+      <div class="upg-label">University Predicted Grade (UPG) · {difficulty} Difficulty</div>
+      <div class="upg-val" style="color:{upg_color};">{final_upg:.3f}</div>
+      <div class="upg-verdict">{verdict}</div>
+      <div style="color:rgba(255,255,255,0.25);font-family:var(--font-mono);font-size:0.58rem;margin-top:12px;letter-spacing:0.1em;position:relative;z-index:1;">
+        Scale: 1.000 (highest) → 5.000 (lowest) · Simulated rank #{sim_rank:,} of 135,000 · Top {100*(1-overall_pct):.1f}th percentile
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ── SEPARATE MATH & SCIENCE UPG CARDS ──
-    st.markdown("""
-    <div class='sec-hdr'><span class='sec-hdr-text'>📊 Subject UPG Breakdown</span><div class='sec-hdr-line'></div></div>
-    """, unsafe_allow_html=True)
-
+    # ── SUBJECT UPG CARDS ──
+    st.markdown('<div class="sec-title">📊 Subject UPG Breakdown</div>', unsafe_allow_html=True)
     st.markdown(f"""
-    <div class='upg-row'>
-      <div class='upg-card math'>
-        <div class='upg-card-shimmer'></div>
-        <div class='upg-card-title'>🔢 Mathematics UPG</div>
-        <div class='upg-card-value'>{math_final_upg:.3f}</div>
-        <div class='upg-card-sub'>
-          {"✅ Strong math performance" if math_final_upg <= 2.3 else "⚠️ Needs improvement" if math_final_upg <= 2.8 else "❌ Significant gaps in math"}
-        </div>
-        <div class='upg-breakdown'>
-          <div class='upg-br-row'><span class='upg-br-lbl'>Math Grade Avg</span><span class='upg-br-val' style='color:var(--math-primary);'>{math_grade_avg:.1f}/100</span></div>
-          <div class='upg-br-row'><span class='upg-br-lbl'>Math Grade UPG (40%)</span><span class='upg-br-val'>{math_grade_upg:.3f}</span></div>
-          <div class='upg-br-row'><span class='upg-br-lbl'>UPCAT Math Score</span><span class='upg-br-val' style='color:var(--math-primary);'>{m_pct*100:.1f}% (RMW)</span></div>
-          <div class='upg-br-row'><span class='upg-br-lbl'>UPCAT Math UPG (60%)</span><span class='upg-br-val'>{math_upcat_upg:.3f}</span></div>
-          <div class='upg-br-row'><span class='upg-br-lbl'>Z-score</span><span class='upg-br-val'>{math_z:+.2f}σ</span></div>
-          <div class='upg-br-row'><span class='upg-br-lbl'>Correct / Wrong / Blank</span><span class='upg-br-val'>{m_correct}C · {m_wrong}W · {m_blank}B</span></div>
+    <div class="upg-cards">
+      <div class="upg-card m">
+        <div class="upg-card-title">🔢 Mathematics UPG</div>
+        <div class="upg-card-val">{math_final_upg:.3f}</div>
+        <div class="upg-card-sub">{"✅ Strong math performance" if math_final_upg<=2.3 else "⚠️ Needs improvement" if math_final_upg<=2.8 else "❌ Significant gaps"}</div>
+        <div class="upg-br">
+          <div class="upg-br-row"><span class="upg-br-lbl">Math Grade Avg</span><span class="upg-br-val" style="color:var(--blue);">{math_grade_avg:.1f}/100</span></div>
+          <div class="upg-br-row"><span class="upg-br-lbl">Grade UPG (40%)</span><span class="upg-br-val">{math_grade_upg:.3f}</span></div>
+          <div class="upg-br-row"><span class="upg-br-lbl">UPCAT Score (RMW)</span><span class="upg-br-val" style="color:var(--blue);">{m_pct*100:.1f}%</span></div>
+          <div class="upg-br-row"><span class="upg-br-lbl">UPCAT UPG (60%)</span><span class="upg-br-val">{math_upcat_upg:.3f}</span></div>
+          <div class="upg-br-row"><span class="upg-br-lbl">Z-score</span><span class="upg-br-val">{math_z:+.2f}σ</span></div>
+          <div class="upg-br-row"><span class="upg-br-lbl">Correct / Wrong / Blank</span><span class="upg-br-val">{m_correct}C · {m_wrong}W · {m_blank}B</span></div>
         </div>
       </div>
-      <div class='upg-card sci'>
-        <div class='upg-card-shimmer'></div>
-        <div class='upg-card-title'>🔬 Science UPG</div>
-        <div class='upg-card-value'>{sci_final_upg:.3f}</div>
-        <div class='upg-card-sub'>
-          {"✅ Strong science performance" if sci_final_upg <= 2.3 else "⚠️ Needs improvement" if sci_final_upg <= 2.8 else "❌ Significant gaps in science"}
-        </div>
-        <div class='upg-breakdown'>
-          <div class='upg-br-row'><span class='upg-br-lbl'>Science Grade Avg</span><span class='upg-br-val' style='color:var(--sci-primary);'>{sci_grade_avg:.1f}/100</span></div>
-          <div class='upg-br-row'><span class='upg-br-lbl'>Science Grade UPG (40%)</span><span class='upg-br-val'>{sci_grade_upg:.3f}</span></div>
-          <div class='upg-br-row'><span class='upg-br-lbl'>UPCAT Science Score</span><span class='upg-br-val' style='color:var(--sci-primary);'>{s_pct*100:.1f}% (RMW)</span></div>
-          <div class='upg-br-row'><span class='upg-br-lbl'>UPCAT Science UPG (60%)</span><span class='upg-br-val'>{sci_upcat_upg:.3f}</span></div>
-          <div class='upg-br-row'><span class='upg-br-lbl'>Z-score</span><span class='upg-br-val'>{sci_z:+.2f}σ</span></div>
-          <div class='upg-br-row'><span class='upg-br-lbl'>Correct / Wrong / Blank</span><span class='upg-br-val'>{s_correct}C · {s_wrong}W · {s_blank}B</span></div>
+      <div class="upg-card s">
+        <div class="upg-card-title">🔬 Science UPG</div>
+        <div class="upg-card-val">{sci_final_upg:.3f}</div>
+        <div class="upg-card-sub">{"✅ Strong science performance" if sci_final_upg<=2.3 else "⚠️ Needs improvement" if sci_final_upg<=2.8 else "❌ Significant gaps"}</div>
+        <div class="upg-br">
+          <div class="upg-br-row"><span class="upg-br-lbl">Science Grade Avg</span><span class="upg-br-val" style="color:var(--teal);">{sci_grade_avg:.1f}/100</span></div>
+          <div class="upg-br-row"><span class="upg-br-lbl">Grade UPG (40%)</span><span class="upg-br-val">{sci_grade_upg:.3f}</span></div>
+          <div class="upg-br-row"><span class="upg-br-lbl">UPCAT Score (RMW)</span><span class="upg-br-val" style="color:var(--teal);">{s_pct*100:.1f}%</span></div>
+          <div class="upg-br-row"><span class="upg-br-lbl">UPCAT UPG (60%)</span><span class="upg-br-val">{sci_upcat_upg:.3f}</span></div>
+          <div class="upg-br-row"><span class="upg-br-lbl">Z-score</span><span class="upg-br-val">{sci_z:+.2f}σ</span></div>
+          <div class="upg-br-row"><span class="upg-br-lbl">Correct / Wrong / Blank</span><span class="upg-br-val">{s_correct}C · {s_wrong}W · {s_blank}B</span></div>
         </div>
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ── METRIC TILES ──
+    # ── METRICS ──
     penalty_total = (m_wrong + s_wrong) * 0.25
     metrics = [
         (f"{final_upg:.3f}", upg_color, "Overall UPG", "Lower is better"),
-        (f"#{sim_rank:,}", "var(--sci-primary)", "Sim. Rank", f"Top {100*(1-overall_pct):.1f}%"),
+        (f"#{sim_rank:,}", "var(--teal)", "Sim. Rank", f"Top {100*(1-overall_pct):.1f}%"),
         (f"{overall_grade_upg:.3f}", "var(--green)", "Grades UPG", f"Avg: {all_grade_avg:.1f}/100"),
         (f"{overall_upcat_upg:.3f}", "var(--amber)" if overall_upcat_upg > 2.5 else "var(--green)", "UPCAT UPG", f"Z: {combined_z:+.2f}"),
     ]
     if math_items_data:
-        metrics.append((f"{m_pct*100:.1f}%", "var(--math-primary)", "Math Score %", f"RMW: {m_raw:.2f}/{m_total}"))
+        metrics.append((f"{m_pct*100:.1f}%", "var(--blue)", "Math Score", f"RMW: {m_raw:.2f}/{m_total}"))
     if sci_items_data:
-        metrics.append((f"{s_pct*100:.1f}%", "var(--sci-primary)", "Science Score %", f"RMW: {s_raw:.2f}/{s_total}"))
+        metrics.append((f"{s_pct*100:.1f}%", "var(--teal)", "Science Score", f"RMW: {s_raw:.2f}/{s_total}"))
 
     cols_m = st.columns(min(len(metrics), 4))
     for i, (val, clr, lbl, sub) in enumerate(metrics):
         with cols_m[i % 4]:
-            st.markdown(f"""
-            <div class='metric-card'>
-              <div class='metric-card-val' style='color:{clr};'>{val}</div>
-              <div class='metric-card-lbl'>{lbl}</div>
-              <div class='metric-card-sub'>{sub}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.metric(label=lbl, value=val, delta=sub)
 
     # ── SCORE PANELS ──
     st.markdown("<br>", unsafe_allow_html=True)
     pcols = []
     if math_items_data: pcols.append('math')
-    if sci_items_data: pcols.append('sci')
+    if sci_items_data:  pcols.append('sci')
     sc = st.columns(len(pcols)) if pcols else []
 
     for ci, subj in enumerate(pcols):
         with sc[ci]:
             if subj == 'math':
                 em, ems = int(elapsed_math//60), int(elapsed_math%60)
-                budget_s = spi_math_display * m_total
+                budget_s = 72 * m_total
                 st.markdown(f"""
-                <div class='score-panel'>
+                <div class="score-panel">
                   <h4>🔢 Mathematics</h4>
-                  <div class='s-row'><span class='s-lbl'>Correct</span><span class='s-val c'>{m_correct} / {m_total}</span></div>
-                  <div class='s-row'><span class='s-lbl'>Wrong (−0.25 each)</span><span class='s-val w'>{m_wrong} · −{m_wrong*0.25:.2f} pts</span></div>
-                  <div class='s-row'><span class='s-lbl'>Blank</span><span class='s-val'>{m_blank}</span></div>
-                  <div class='s-row'><span class='s-lbl'>RMW Score</span><span class='s-val g'>{m_raw:.2f} / {m_total}</span></div>
-                  <div class='s-row'><span class='s-lbl'>Percentage</span><span class='s-val g'>{m_pct*100:.1f}%</span></div>
-                  <div class='s-row'><span class='s-lbl'>Accuracy on Attempted</span><span class='s-val'>{m_correct/max(1,m_correct+m_wrong)*100:.1f}%</span></div>
-                  <div class='s-row'><span class='s-lbl'>Time Used</span><span class='s-val'>{em}m {ems}s · {elapsed_math/max(1,m_total):.0f}s/item</span></div>
-                  <div class='s-row'><span class='s-lbl'>UPCAT Budget</span><span class='s-val'>72s/item · {budget_s//60}min total</span></div>
-                  <div class='s-row'><span class='s-lbl'>Time Status</span><span class='s-val {"c" if elapsed_math <= budget_s*1.05 else "w"}'>{"✅ On budget" if elapsed_math <= budget_s else "⚠️ Over budget"}</span></div>
-                </div>
-                """, unsafe_allow_html=True)
+                  <div class="s-row"><span class="s-lbl">Correct</span><span class="s-val c">{m_correct} / {m_total}</span></div>
+                  <div class="s-row"><span class="s-lbl">Wrong (−0.25 each)</span><span class="s-val w">{m_wrong} · −{m_wrong*0.25:.2f} pts</span></div>
+                  <div class="s-row"><span class="s-lbl">Blank (0 pts)</span><span class="s-val">{m_blank}</span></div>
+                  <div class="s-row"><span class="s-lbl">RMW Score</span><span class="s-val g">{m_raw:.2f} / {m_total}</span></div>
+                  <div class="s-row"><span class="s-lbl">Percentage</span><span class="s-val g">{m_pct*100:.1f}%</span></div>
+                  <div class="s-row"><span class="s-lbl">Accuracy on Attempted</span><span class="s-val">{m_correct/max(1,m_correct+m_wrong)*100:.1f}%</span></div>
+                  <div class="s-row"><span class="s-lbl">Time Used</span><span class="s-val">{em}m {ems}s · {elapsed_math/max(1,m_total):.0f}s/item</span></div>
+                  <div class="s-row"><span class="s-lbl">Time Status</span><span class="s-val {"c" if elapsed_math<=budget_s else "w"}">{"✅ On budget" if elapsed_math<=budget_s else "⚠️ Over budget"}</span></div>
+                </div>""", unsafe_allow_html=True)
             else:
                 es, ess = int(elapsed_sci//60), int(elapsed_sci%60)
-                budget_ss = spi_sci_display * s_total
+                budget_ss = 60 * s_total
                 st.markdown(f"""
-                <div class='score-panel'>
+                <div class="score-panel">
                   <h4>🔬 Science</h4>
-                  <div class='s-row'><span class='s-lbl'>Correct</span><span class='s-val c'>{s_correct} / {s_total}</span></div>
-                  <div class='s-row'><span class='s-lbl'>Wrong (−0.25 each)</span><span class='s-val w'>{s_wrong} · −{s_wrong*0.25:.2f} pts</span></div>
-                  <div class='s-row'><span class='s-lbl'>Blank</span><span class='s-val'>{s_blank}</span></div>
-                  <div class='s-row'><span class='s-lbl'>RMW Score</span><span class='s-val g'>{s_raw:.2f} / {s_total}</span></div>
-                  <div class='s-row'><span class='s-lbl'>Percentage</span><span class='s-val g'>{s_pct*100:.1f}%</span></div>
-                  <div class='s-row'><span class='s-lbl'>Accuracy on Attempted</span><span class='s-val'>{s_correct/max(1,s_correct+s_wrong)*100:.1f}%</span></div>
-                  <div class='s-row'><span class='s-lbl'>Time Used</span><span class='s-val'>{es}m {ess}s · {elapsed_sci/max(1,s_total):.0f}s/item</span></div>
-                  <div class='s-row'><span class='s-lbl'>UPCAT Budget</span><span class='s-val'>60s/item · {budget_ss//60}min total</span></div>
-                  <div class='s-row'><span class='s-lbl'>Time Status</span><span class='s-val {"c" if elapsed_sci <= budget_ss*1.05 else "w"}'>{"✅ On budget" if elapsed_sci <= budget_ss else "⚠️ Over budget"}</span></div>
-                </div>
-                """, unsafe_allow_html=True)
+                  <div class="s-row"><span class="s-lbl">Correct</span><span class="s-val c">{s_correct} / {s_total}</span></div>
+                  <div class="s-row"><span class="s-lbl">Wrong (−0.25 each)</span><span class="s-val w">{s_wrong} · −{s_wrong*0.25:.2f} pts</span></div>
+                  <div class="s-row"><span class="s-lbl">Blank (0 pts)</span><span class="s-val">{s_blank}</span></div>
+                  <div class="s-row"><span class="s-lbl">RMW Score</span><span class="s-val g">{s_raw:.2f} / {s_total}</span></div>
+                  <div class="s-row"><span class="s-lbl">Percentage</span><span class="s-val g">{s_pct*100:.1f}%</span></div>
+                  <div class="s-row"><span class="s-lbl">Accuracy on Attempted</span><span class="s-val">{s_correct/max(1,s_correct+s_wrong)*100:.1f}%</span></div>
+                  <div class="s-row"><span class="s-lbl">Time Used</span><span class="s-val">{es}m {ess}s · {elapsed_sci/max(1,s_total):.0f}s/item</span></div>
+                  <div class="s-row"><span class="s-lbl">Time Status</span><span class="s-val {"c" if elapsed_sci<=budget_ss else "w"}">{"✅ On budget" if elapsed_sci<=budget_ss else "⚠️ Over budget"}</span></div>
+                </div>""", unsafe_allow_html=True)
 
-    # ── TOPIC HEATMAPS ──
+    # ── COMPETENCY HEATMAPS ──
     if math_topics or sci_topics:
-        st.markdown("""
-        <div class='sec-hdr'><span class='sec-hdr-text'>🔥 Topic Mastery Heatmap</span><div class='sec-hdr-line'></div></div>
-        """, unsafe_allow_html=True)
-        hcols = []
-        if math_topics: hcols.append('math')
-        if sci_topics:  hcols.append('sci')
-        hc = st.columns(len(hcols))
-        for hi, hs in enumerate(hcols):
+        st.markdown('<div class="sec-title">🔥 Competency Mastery Heatmap</div>', unsafe_allow_html=True)
+        hcols_list = [k for k in ['math', 'sci'] if (math_topics if k=='math' else sci_topics)]
+        hc = st.columns(len(hcols_list))
+        for hi, hs in enumerate(hcols_list):
             with hc[hi]:
                 td = math_topics if hs == 'math' else sci_topics
-                color = "var(--math-primary)" if hs == 'math' else "var(--sci-primary)"
-                lbl = "🔢 Math Topics" if hs == 'math' else "🔬 Science Topics"
-                st.markdown(f"<h4 style='font-family:var(--font-display);font-size:1rem;color:{color};margin-bottom:10px;'>{lbl}</h4>", unsafe_allow_html=True)
+                color = "var(--blue)" if hs == 'math' else "var(--teal)"
+                lbl_h = "🔢 Math Competency Mastery" if hs == 'math' else "🔬 Science Competency Mastery"
+                st.markdown(f"<h4 style='font-family:var(--font-display);font-size:0.9rem;color:{color};margin-bottom:10px;'>{lbl_h}</h4>", unsafe_allow_html=True)
                 rows = sorted(td.items(), key=lambda x: x[1]['correct']/max(1,x[1]['total']))
                 html = "<div class='heat-grid'>"
                 for sk, data in rows:
                     pct_sk = data['correct']/max(1,data['total'])*100
-                    cls_b = "strong" if pct_sk>=70 else ("mid" if pct_sk>=40 else "weak")
-                    pc = "var(--green)" if cls_b=="strong" else ("var(--amber)" if cls_b=="mid" else "var(--red)")
-                    label_short = sk[:26]+"…" if len(sk)>26 else sk
+                    cls_b = "hi" if pct_sk>=70 else ("mid" if pct_sk>=40 else "lo")
+                    pc = "var(--green)" if cls_b=="hi" else ("var(--amber)" if cls_b=="mid" else "var(--red)")
+                    sk_s = sk[:34]+'…' if len(sk)>34 else sk
                     html += f"""
-                    <div class='heat-row' title='{sk}'>
-                      <span style='flex:1;color:var(--fg-secondary);font-size:0.74rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>{label_short}</span>
-                      <div class='heat-bar-out'><div class='heat-bar-in {cls_b}' style='width:{pct_sk:.0f}%;'></div></div>
-                      <span class='heat-pct' style='color:{pc};'>{pct_sk:.0f}%</span>
+                    <div class="heat-row" title="{sk}">
+                      <span style="flex:1;color:var(--fg1);font-size:0.73rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{sk_s}</span>
+                      <div class="heat-bar-out"><div class="heat-bar-in {cls_b}" style="width:{pct_sk:.0f}%;"></div></div>
+                      <span class="heat-pct" style="color:{pc};">{pct_sk:.0f}%</span>
                     </div>"""
                 html += "</div>"
                 st.markdown(html, unsafe_allow_html=True)
 
     # ── ADMISSION ENGINE ──
-    st.markdown("""
-    <div class='sec-hdr'><span class='sec-hdr-text'>🏛️ Cascading Admission Decision Engine</span><div class='sec-hdr-line'></div></div>
-    """, unsafe_allow_html=True)
-
-    # Actual 2025 data: 17,996 qualifiers out of 135,236 = 13.3% total
-    # 10,600 degree-program qualifiers (direct) = 7.8%
-    # rest are waitlisted
+    st.markdown('<div class="sec-title">🏛️ UP Admission Decision Engine</div>', unsafe_allow_html=True)
     st.markdown(f"""
-    <div class='notice'>
-      <span class='notice-icon'>📊</span>
-      <div>
-        <strong>UPCAT 2025 Official Data:</strong> 17,996 of 135,236 applicants received admission notices (13.3%),
-        including waitlisted applicants. Only ~10,600 received direct program qualifications (~7.8%).
-        Your simulated UPG of <strong>{final_upg:.3f}</strong> places you at rank <strong>#{sim_rank:,}</strong>.
-        Admission is campus-qualified first, then program-specific within that campus.
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+    <div class="notice">
+      <span class="ni">📊</span>
+      <div><strong>UPCAT 2025 Data:</strong> 17,996 of 135,236 applicants qualified (13.3% total, ~7.8% direct program).
+      Your simulated UPG of <strong>{final_upg:.3f}</strong> → rank <strong>#{sim_rank:,}</strong>.
+      Admission is campus-first, then program-specific within campus.</div>
+    </div>""", unsafe_allow_html=True)
 
     def evaluate_program(campus, program, cutoff, upg):
         tier = get_program_tier(campus, program)
         adj = {"Triple Quota": -0.40, "Double Quota": -0.22, "Single Quota": -0.06, "Less Popular": +0.08}.get(tier, 0.0)
         req = max(1.100, cutoff + adj)
         if upg <= req:
-            return "<span class='badge pass'>✅ PASSED</span>", req, tier, "Within quota band"
+            return "<span class='badge pass'>✅ PASSED</span>", req, tier
         elif upg <= req + 0.14:
-            return "<span class='badge risk'>🟡 DPWAS RISK</span>", req, tier, "Borderline — may waitlist"
+            return "<span class='badge risk'>🟡 DPWAS RISK</span>", req, tier
         else:
-            return "<span class='badge fail'>❌ BELOW CUTOFF</span>", req, tier, "Above program ceiling"
+            return "<span class='badge fail'>❌ BELOW CUTOFF</span>", req, tier
 
     acol1, acol2 = st.columns(2)
     for acol, campus, progs, cn in [
@@ -2141,436 +2063,258 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
         (acol2, campus_2, [c2_p1, c2_p2, c2_p3], "2nd"),
     ]:
         cutoff = CAMPUS_DATA[campus]["cutoff"]
-        recon  = CAMPUS_DATA[campus]["recon"]
         qualified = final_upg <= cutoff
-        hdr_cls = "" if qualified else "fail"
-        status_txt = "✅ QUALIFIED" if qualified else "❌ NOT QUALIFIED"
         with acol:
             st.markdown(f"""
-            <div class='campus-card'>
-              <div class='campus-hdr {hdr_cls}'>
+            <div class="campus-card">
+              <div class="campus-hdr {"" if qualified else "fail"}">
                 <h4>{cn} Choice — {campus}</h4>
-                <p>Cutoff: {cutoff:.3f} · Your UPG: {final_upg:.3f} · {status_txt} · {CAMPUS_DATA[campus]["note"]}</p>
+                <p>Cutoff: {cutoff:.3f} · Your UPG: {final_upg:.3f} · {"✅ QUALIFIED" if qualified else "❌ NOT QUALIFIED"} · {CAMPUS_DATA[campus]["note"]}</p>
               </div>
-              <div class='campus-body'>
-            """, unsafe_allow_html=True)
+              <div class="campus-body">""", unsafe_allow_html=True)
             if campus == campus_2 and final_upg <= CAMPUS_DATA[campus_1]["cutoff"]:
-                st.info("📌 Qualified at 1st campus — 2nd campus becomes null in the cascading UP system.")
+                st.info("📌 Already qualified at 1st campus — 2nd is null in cascading system.")
             if qualified:
                 for i, prog in enumerate(progs, 1):
-                    badge, req, tier, note = evaluate_program(campus, prog, cutoff, final_upg)
+                    badge, req, tier = evaluate_program(campus, prog, cutoff, final_upg)
                     st.markdown(f"""
-                    <div class='prog-row'>
+                    <div class="prog-row">
                       <div>
-                        <div class='prog-name'>P{i}: {prog}</div>
-                        <div class='prog-sub'>{tier} · Eff. cutoff ~{req:.3f} · {note}</div>
+                        <div class="prog-name">P{i}: {prog}</div>
+                        <div class="prog-sub">{tier} · Eff. cutoff ~{req:.3f}</div>
                       </div>
                       <div>{badge}</div>
                     </div>""", unsafe_allow_html=True)
             else:
+                recon = CAMPUS_DATA[campus]["recon"]
                 recon_ok = recon > 0 and final_upg <= recon
                 st.markdown(f"""
-                <div style='padding:16px;text-align:center;font-family:var(--font-body);font-size:0.85rem;color:var(--fg-secondary);'>
-                  UPG {final_upg:.3f} exceeds campus cutoff {cutoff:.3f}.<br><br>
-                  Reconsideration: <strong>{f"{recon:.3f}" if recon>0 else "None"}</strong><br>
-                  {"✅ Recon-eligible" if recon_ok else ("❌ Beyond recon range" if recon>0 else "🚫 No appeals policy")}
+                <div style="padding:14px;text-align:center;font-family:var(--font-body);font-size:0.85rem;color:var(--fg1);">
+                  UPG {final_upg:.3f} exceeds cutoff {cutoff:.3f}.<br><br>
+                  Recon window: <strong>{f"{recon:.3f}" if recon > 0 else "None"}</strong><br>
+                  {"✅ Recon-eligible" if recon_ok else ("❌ Beyond recon range" if recon > 0 else "🚫 No appeals policy")}
                 </div>""", unsafe_allow_html=True)
             st.markdown("</div></div>", unsafe_allow_html=True)
 
-    # ── DEEP ANALYTICS TABS ──
-    st.markdown("""
-    <div class='sec-hdr'><span class='sec-hdr-text'>🔬 Deep Analytics & Personalized Feedback</span><div class='sec-hdr-line'></div></div>
-    """, unsafe_allow_html=True)
+    # ── ITEM REVIEW TABS ──
+    st.markdown('<div class="sec-title">🔬 Detailed Item Review & Feedback</div>', unsafe_allow_html=True)
 
-    tab_labels_res = ["📊 Overview", "📐 Grade UPG Math", "📐 Grade UPG Science",
-                      "🧮 UPG Formula", "⚖️ Recon & DPWAS"]
-    if math_items_data: tab_labels_res.append("🔢 Math Item Review")
-    if sci_items_data:  tab_labels_res.append("🔬 Science Item Review")
-    tabs_r = st.tabs(tab_labels_res)
+    tab_res_labels = ["📊 Performance Overview", "🧮 UPG Formula"]
+    if math_items_data: tab_res_labels.append("🔢 Math Review")
+    if sci_items_data:  tab_res_labels.append("🔬 Science Review")
+    tab_res_labels.append("⚖️ Recon & DPWAS")
+    tabs_r = st.tabs(tab_res_labels)
     ti = 0
 
-    # ── OVERVIEW ──
+    # Overview
     with tabs_r[ti]:
-        penalty_total = (m_wrong + s_wrong) * 0.25
         guess_rate = (m_wrong + s_wrong) / max(1, m_correct+m_wrong+s_correct+s_wrong)
-        math_err = {sk:(1-d['correct']/max(1,d['total']))*100 for sk,d in math_topics.items()}
-        sci_err  = {sk:(1-d['correct']/max(1,d['total']))*100 for sk,d in sci_topics.items()}
-        top_math_gaps = sorted(math_err.items(), key=lambda x:-x[1])[:4]
-        top_sci_gaps  = sorted(sci_err.items(),  key=lambda x:-x[1])[:4]
+        math_err = {k: (1-v['correct']/max(1,v['total']))*100 for k,v in math_topics.items()}
+        sci_err  = {k: (1-v['correct']/max(1,v['total']))*100 for k,v in sci_topics.items()}
+        top_m_gaps = sorted(math_err.items(), key=lambda x:-x[1])[:5]
+        top_s_gaps = sorted(sci_err.items(), key=lambda x:-x[1])[:5]
 
         st.markdown(f"""
-        <div class='fb-box math'>
-          <strong style='font-family:var(--font-display);font-size:1.1rem;'>📊 Performance Overview — {difficulty} Difficulty</strong><br><br>
-          You completed this simulation placing at the <strong>{overall_pct*100:.1f}th percentile</strong> of a simulated 135,000-applicant pool
-          (Rank #{sim_rank:,}). Combined UPCAT score: <strong>{combined_pct*100:.1f}%</strong> vs competitive mean {MEAN_BASELINE*100:.0f}% (σ = {SIGMA:.2f}).
-          Z-score = {combined_z:+.2f}. Total penalty from wrong answers: <strong>−{penalty_total:.2f} pts</strong>.<br><br>
-          {"✅ Penalty is well-controlled — you're answering selectively." if guess_rate < 0.22 else
-          "⚠️ Moderate penalty — be more conservative; leave items blank if you cannot eliminate 2+ options." if guess_rate < 0.38 else
-          "🔴 High penalty burden — aggressive guessing significantly hurt your score. UPCAT Math and Science reward leaving hard items blank."}
-        </div>
-        """, unsafe_allow_html=True)
+        <div class="notice green">
+          <span class="ni">📊</span>
+          <div>
+            <strong>Performance Summary — {difficulty} Difficulty</strong><br>
+            You placed at the <strong>{overall_pct*100:.1f}th percentile</strong> (Rank #{sim_rank:,} of 135,000).
+            Combined UPCAT score: <strong>{combined_pct*100:.1f}%</strong> vs competitive mean {MEAN_BASELINE*100:.0f}% (σ={SIGMA:.2f}).
+            Z-score: <strong>{combined_z:+.2f}</strong>.
+            Total penalty from wrong guesses: <strong>−{penalty_total:.2f} pts</strong>
+            ({f"✅ Well-controlled guessing." if guess_rate<0.22 else "⚠️ Moderate over-guessing." if guess_rate<0.38 else "🔴 Aggressive guessing hurting score."})
+          </div>
+        </div>""", unsafe_allow_html=True)
 
-        st.markdown('<div class="fb-grid">', unsafe_allow_html=True)
-        mini_cards = []
-        if math_items_data:
-            mini_cards.append(("🔢 Math Performance", f"{m_correct}/{m_total} correct · {m_pct*100:.0f}%",
-                "✅ Strong math base." if m_pct>=0.65 else
-                "📘 Moderate — drill JHS algebra word problems and number sense daily." if m_pct>=0.45 else
-                "📖 Needs major work — JHS algebra (linear equations, factoring, ratios) is ~58% of UPCAT Math. Master these first."))
-        if sci_items_data:
-            mini_cards.append(("🔬 Science Performance", f"{s_correct}/{s_total} correct · {s_pct*100:.0f}%",
-                "✅ Strong conceptual science." if s_pct>=0.65 else
-                "📘 Moderate — practice reading experimental data under time pressure." if s_pct>=0.45 else
-                "📖 Needs work — UPCAT Science is ~60% passage-based. Practice: read question FIRST, then scan stimulus for the relevant data point."))
-        if math_items_data:
-            m_ratio = elapsed_math / max(1, m_total) / 72
-            mini_cards.append(("⏱️ Math Time (72s/item budget)", f"{int(elapsed_math//60)}m {int(elapsed_math%60)}s total · {elapsed_math/max(1,m_total):.0f}s/item",
-                "✅ On pace." if 0.6<=m_ratio<=1.2 else
-                "⚡ Rushed — may have made careless arithmetic errors. Slow down on multi-step items." if m_ratio<0.6 else
-                "⏰ Over budget — practice mental math shortcuts: PEMDAS shortcuts, factor trees, fraction sense, divisibility rules."))
-        if sci_items_data:
-            s_ratio = elapsed_sci / max(1, s_total) / 60
-            mini_cards.append(("⏱️ Science Time (60s/item budget)", f"{int(elapsed_sci//60)}m {int(elapsed_sci%60)}s total · {elapsed_sci/max(1,s_total):.0f}s/item",
-                "✅ On pace." if 0.6<=s_ratio<=1.2 else
-                "⚡ Rushed — don't skip reading the stimulus. Misreading the stimulus is the #1 source of Science errors." if s_ratio<0.6 else
-                "⏰ Over budget — strategy: read the QUESTION first to know what you're looking for, then scan the stimulus for only that information."))
-        mini_cards.append(("⚡ RMW Strategy", f"−{penalty_total:.2f} pts from {m_wrong+s_wrong} wrong guesses",
-            "✅ Excellent guessing discipline." if guess_rate<0.20 else
-            "👍 Acceptable — slightly aggressive but manageable." if guess_rate<0.30 else
-            "⚠️ Too many wrong guesses. Rule: blank unless you eliminate ≥2 options. Break-even requires ≥25% confidence."))
-        mini_cards.append(("🎯 Priority Study Plan", "Recommended next steps",
-            "Drill JHS algebra word problems · Practice passage-based Science items · Increase difficulty next session" if combined_pct<0.55 else
-            "Focus on heatmap weak areas · Practice time management · Move up one difficulty level · Target 0 wrong-guess penalties"))
-
-        for mc_title, mc_stat, mc_body in mini_cards:
-            st.markdown(f"""
-            <div class='fb-mini'>
-              <div class='fb-mini-title'>{mc_title}</div>
-              <div class='fb-mini-body'>
-                <strong style='color:var(--fg-primary);'>{mc_stat}</strong><br>
-                {mc_body}
-              </div>
-            </div>""", unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        if top_math_gaps:
-            st.markdown(f"""
-            <div style='margin-top:14px;padding:12px 16px;background:var(--math-glow);border:1px solid rgba(88,166,255,0.2);border-radius:var(--r-sm);'>
-              <strong style='color:var(--math-primary);font-family:var(--font-body);'>🔢 Math Weak Areas (priority review order):</strong>
-              <ul style='margin:8px 0 0 16px;font-family:var(--font-mono);font-size:0.74rem;color:var(--fg-secondary);'>
-                {"".join(f"<li>{sk} — {e:.0f}% error rate</li>" for sk,e in top_math_gaps)}
-              </ul>
-            </div>""", unsafe_allow_html=True)
-        if top_sci_gaps:
-            st.markdown(f"""
-            <div style='margin-top:10px;padding:12px 16px;background:var(--sci-glow);border:1px solid rgba(57,208,197,0.2);border-radius:var(--r-sm);'>
-              <strong style='color:var(--sci-primary);font-family:var(--font-body);'>🔬 Science Weak Areas (priority review order):</strong>
-              <ul style='margin:8px 0 0 16px;font-family:var(--font-mono);font-size:0.74rem;color:var(--fg-secondary);'>
-                {"".join(f"<li>{sk} — {e:.0f}% error rate</li>" for sk,e in top_sci_gaps)}
-              </ul>
-            </div>""", unsafe_allow_html=True)
+        if top_m_gaps:
+            st.markdown("""<div class="notice warn"><span class="ni">🔢</span><div><strong>Math Competency Gaps (highest error rate first):</strong><br>""" +
+                "<br>".join(f"• {k} — {e:.0f}% error rate" for k,e in top_m_gaps) +
+                "</div></div>", unsafe_allow_html=True)
+        if top_s_gaps:
+            st.markdown("""<div class="notice sci"><span class="ni">🔬</span><div><strong>Science Competency Gaps (highest error rate first):</strong><br>""" +
+                "<br>".join(f"• {k} — {e:.0f}% error rate" for k,e in top_s_gaps) +
+                "</div></div>", unsafe_allow_html=True)
     ti += 1
 
-    # ── MATH GRADE UPG ──
+    # UPG Formula
     with tabs_r[ti]:
-        st.markdown('<div class="fb-box math">', unsafe_allow_html=True)
-        st.markdown("### 📐 Mathematics Grade UPG (40% Weight)")
-        g_cols = st.columns(4)
-        for i, (lbl, val) in enumerate([
-            ("G8 Math", g8_math),("G9 Math", g9_math),("G10 Math", g10_math),
-            ("Pre-Calc", g11_precalc),("Basic Calc", g11_calc),("Stats", g11_stats),("Gen Math", g11_genmath)
-        ]):
-            g_cols[i%4].metric(lbl, f"{val:.1f}")
-        st.markdown(f"""
-        **Math Grade Average:** {math_grade_avg:.2f} / 100  
-        **School Modifier:** {avg_mod:+.3f} ({SCHOOL_TIERS[jhs_type]['label']} · {SCHOOL_TIERS[shs_type]['label']})  
-        **Math Grade UPG:** {grade_to_upg(math_grade_avg, 0):.3f} (raw) → **{math_grade_upg:.3f}** (after school mod)
-        """)
-        if avg_mod > 0:
-            st.success(f"✅ Palugit active: school rigor protection reduces grade UPG by {avg_mod:.3f} pts.")
-        elif avg_mod < 0:
-            st.warning(f"⚠️ Pabigat: private school grade inflation adjustment increases UPG by {abs(avg_mod):.3f} pts.")
-        with st.expander("📐 Formula"):
-            st.latex(r"UPG_{\text{Math, grade}} = 5.0 - \left(\frac{\bar{G}_{\text{Math}} - 75}{25}\right) \times 4.0 - \Delta_{\text{school}}")
-            st.latex(f"= 5.0 - \\frac{{{math_grade_avg:.2f}-75}}{{25}} \\times 4.0 - ({avg_mod:.3f}) = {math_grade_upg:.3f}")
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("#### 🧮 UPG Derivation")
+        with st.expander("Full Math UPG Derivation"):
+            st.latex(f"\\text{{RMW}}_{{\\text{{Math}}}} = {m_correct} - \\frac{{1}}{{4}} \\times {m_wrong} = {m_raw:.2f}")
+            st.latex(f"Z_{{\\text{{Math}}}} = \\frac{{{m_pct:.4f} - {MEAN_BASELINE}}}{{{SIGMA}}} = {math_z:.4f}")
+            st.latex(f"UPG_{{\\text{{UPCAT,Math}}}} = 2.75 - ({math_z:.4f} \\times 0.55) = {math_upcat_upg:.3f}")
+            st.latex(f"UPG_{{\\text{{Math}}}} = 0.40 \\times {math_grade_upg:.3f} + 0.60 \\times {math_upcat_upg:.3f} = {math_final_upg:.3f}")
+        with st.expander("Full Science UPG Derivation"):
+            st.latex(f"\\text{{RMW}}_{{\\text{{Sci}}}} = {s_correct} - \\frac{{1}}{{4}} \\times {s_wrong} = {s_raw:.2f}")
+            st.latex(f"Z_{{\\text{{Sci}}}} = \\frac{{{s_pct:.4f} - {MEAN_BASELINE}}}{{{SIGMA}}} = {sci_z:.4f}")
+            st.latex(f"UPG_{{\\text{{Sci}}}} = 0.40 \\times {sci_grade_upg:.3f} + 0.60 \\times {sci_upcat_upg:.3f} = {sci_final_upg:.3f}")
+        with st.expander("Overall UPG"):
+            st.latex(f"UPG_{{\\text{{Overall}}}} = 0.40 \\times {overall_grade_upg:.3f} + 0.60 \\times {overall_upcat_upg:.3f} = {final_upg:.3f}")
+        with st.expander("Grade UPG Formula"):
+            st.latex(r"UPG_{\text{grade}} = 5.0 - \left(\frac{\bar{G} - 75}{25}\right) \times 4.0 - \Delta_{\text{school}}")
+            st.markdown(f"Math grade avg: **{math_grade_avg:.2f}** · School modifier: **{avg_mod:+.3f}** · Palugit: **{'Active' if palugit_active else 'Not Active'}**")
     ti += 1
 
-    # ── SCIENCE GRADE UPG ──
-    with tabs_r[ti]:
-        st.markdown('<div class="fb-box sci">', unsafe_allow_html=True)
-        st.markdown("### 📐 Science Grade UPG (40% Weight)")
-        sg_cols = st.columns(4)
-        for i, (lbl, val) in enumerate([
-            ("G8 Sci", g8_sci),("G9 Sci", g9_sci),("G10 Sci", g10_sci),
-            ("Gen Bio 1", g11_bio1),("Gen Bio 2", g11_bio2),("Earth Sci", g11_earth)
-        ]):
-            sg_cols[i%4].metric(lbl, f"{val:.1f}")
-        st.markdown(f"""
-        **Science Grade Average:** {sci_grade_avg:.2f} / 100  
-        **School Modifier:** {avg_mod:+.3f}  
-        **Science Grade UPG:** {grade_to_upg(sci_grade_avg, 0):.3f} (raw) → **{sci_grade_upg:.3f}** (after school mod)
-        """)
-        with st.expander("📐 Formula"):
-            st.latex(r"UPG_{\text{Science, grade}} = 5.0 - \left(\frac{\bar{G}_{\text{Sci}} - 75}{25}\right) \times 4.0 - \Delta_{\text{school}}")
-            st.latex(f"= 5.0 - \\frac{{{sci_grade_avg:.2f}-75}}{{25}} \\times 4.0 - ({avg_mod:.3f}) = {sci_grade_upg:.3f}")
-        st.markdown("</div>", unsafe_allow_html=True)
-    ti += 1
-
-    # ── UPG FORMULA TAB ──
-    with tabs_r[ti]:
-        st.markdown('<div class="fb-box green">', unsafe_allow_html=True)
-        st.markdown("### 🧮 UPG Formula & UPCAT Score Analysis")
-        st.markdown(f"""
-        The overall UPG is a weighted combination: **40% grades + 60% UPCAT score**.
-        For this simulator, Math and Science grades are averaged (the actual UPCAT uses all 4 subtests).
-        """)
-        with st.expander("📐 Full Math UPG Derivation"):
-            st.latex(r"\text{RMW}_{\text{Math}} = \text{Correct} - \frac{1}{4}\text{Wrong}")
-            st.latex(f"= {m_correct} - \\frac{{1}}{{4}} \\times {m_wrong} = {m_raw:.2f}")
-            st.latex(r"Z_{\text{Math}} = \frac{P_{\text{Math}} - \mu}{\sigma}")
-            st.latex(f"= \\frac{{{m_pct:.4f} - {MEAN_BASELINE}}}{{{SIGMA}}} = {math_z:.4f}")
-            st.latex(r"UPG_{\text{UPCAT, Math}} = \text{clamp}(2.75 - Z_{\text{Math}} \times 0.55)")
-            st.latex(f"= 2.75 - ({math_z:.4f} \\times 0.55) = {math_upcat_upg:.3f}")
-            st.latex(r"UPG_{\text{Math}} = 0.40 \times UPG_{\text{grade, Math}} + 0.60 \times UPG_{\text{UPCAT, Math}}")
-            st.latex(f"= 0.40 \\times {math_grade_upg:.3f} + 0.60 \\times {math_upcat_upg:.3f} = {math_final_upg:.3f}")
-        with st.expander("📐 Full Science UPG Derivation"):
-            st.latex(r"\text{RMW}_{\text{Sci}} = \text{Correct} - \frac{1}{4}\text{Wrong}")
-            st.latex(f"= {s_correct} - \\frac{{1}}{{4}} \\times {s_wrong} = {s_raw:.2f}")
-            st.latex(r"Z_{\text{Sci}} = \frac{P_{\text{Sci}} - \mu}{\sigma}")
-            st.latex(f"= \\frac{{{s_pct:.4f} - {MEAN_BASELINE}}}{{{SIGMA}}} = {sci_z:.4f}")
-            st.latex(r"UPG_{\text{Sci}} = 0.40 \times UPG_{\text{grade, Sci}} + 0.60 \times UPG_{\text{UPCAT, Sci}}")
-            st.latex(f"= 0.40 \\times {sci_grade_upg:.3f} + 0.60 \\times {sci_upcat_upg:.3f} = {sci_final_upg:.3f}")
-        with st.expander("📐 Overall UPG"):
-            st.latex(r"UPG_{\text{Overall}} = 0.40 \times UPG_{\text{grades}} + 0.60 \times UPG_{\text{UPCAT combined}}")
-            st.latex(f"= 0.40 \\times {overall_grade_upg:.3f} + 0.60 \\times {overall_upcat_upg:.3f} = {final_upg:.3f}")
-        with st.expander("📐 Real UPCAT Math vs Science (what this sim approximates)"):
-            st.markdown("""
-            **Actual UPCAT UPG computation** (official methodology, simplified):
-            - The UPCAT has 4 subtests: Language, Reading Comprehension, Science, Mathematics.
-            - Each subtest is standardized separately then combined.
-            - **For STEM programs** (Engineering, CS, Nursing), Math and Science scores are weighted more heavily in the degree-predictor score used for program ranking.
-            - **This simulator** approximates by computing separate Math UPG and Science UPG, then averaging them for the overall. Real UP weights may differ.
-            - The key takeaway: **strong Math and Science scores are critical** for competitive STEM programs. A weak Science UPG can disqualify you from Biology/Nursing/CS even if your overall UPG is borderline qualifying.
-            """)
-        st.markdown("</div>", unsafe_allow_html=True)
-    ti += 1
-
-    # ── RECON / DPWAS ──
-    with tabs_r[ti]:
-        st.markdown('<div class="fb-box amber">', unsafe_allow_html=True)
-        st.markdown("### ⚖️ DPWAS, Reconsideration & Cascading Admission")
-        st.markdown(f"""
-        **Official UPCAT 2025 numbers:** 17,996 admission notices out of 135,236 applicants (13.3%).
-        Of these, ~10,600 were direct degree-program qualifiers (~7.8%). 
-        The remaining ~7,400 were waitlisted (DPWAS). 
-        Being waitlisted is NOT rejection — slots open as accepted students decline, transfer, or fail to enroll.
-
-        **How cascading works:**
-        1. You name 2 campuses and up to 3 programs per campus.
-        2. If you qualify at Campus 1 → Campus 2 is automatically voided.
-        3. Within a campus, program slots are filled by UPG ranking. Triple-quota programs have the most slots.
-        4. If you fail all programs at Campus 1, you cascade to Campus 2.
-
-        **EEAS (Excellence-Equity Admissions System):**
-        UP allocates ~70% of slots by raw UPG rank. The remaining ~30% is distributed to underrepresented areas and school types. 
-        Public school students get Palugit (bonus) which improves your UPG.
-        """)
-        for campus in [campus_1, campus_2]:
-            recon  = CAMPUS_DATA[campus]["recon"]
-            cutoff = CAMPUS_DATA[campus]["cutoff"]
-            st.markdown(f"**{campus}** — Cutoff: {cutoff:.3f} · Recon: {f'{recon:.3f}' if recon > 0 else 'N/A'}")
-            if recon == 0.0:
-                st.error(f"🚫 {campus}: Absolute no-reconsideration policy. No appeals.")
-            elif final_upg <= cutoff:
-                st.success(f"✅ Qualified ({final_upg:.3f} ≤ {cutoff:.3f}). No recon needed.")
-            elif final_upg <= recon:
-                st.warning(f"📋 Recon-eligible: UPG {final_upg:.3f} within window ({cutoff:.3f}–{recon:.3f}). Not guaranteed.")
-            else:
-                st.error(f"❌ UPG {final_upg:.3f} exceeds recon limit {recon:.3f}.")
-        st.markdown("</div>", unsafe_allow_html=True)
-    ti += 1
-
-    # ── MATH ITEM REVIEW ──
+    # Math Item Review
     if math_items_data:
         with tabs_r[ti]:
-            st.markdown("### 🔢 Mathematics — Item-by-Item Review with Full Solutions")
-            m_w = [q for q in math_items_data if u_math.get(q['item_number']) not in [None, q['correct_answer']] and u_math.get(q['item_number'])]
-            m_c_list = [q for q in math_items_data if u_math.get(q['item_number']) == q['correct_answer']]
-            m_b = [q for q in math_items_data if u_math.get(q['item_number']) is None]
-
+            st.markdown("### 🔢 Mathematics — Item-by-Item Review")
+            m_w = [q for q in math_items_data if u_math.get(q['item_number']) not in [None,''] and u_math.get(q['item_number']) != q.get('correct_answer')]
+            m_c_list = [q for q in math_items_data if u_math.get(q['item_number']) == q.get('correct_answer')]
+            m_b = [q for q in math_items_data if not u_math.get(q['item_number'])]
             st.markdown(f"""
-            <div class='stat-row'>
-              <div class='stat-pill'><div class='sp-num' style='color:var(--red);'>{len(m_w)}</div><div class='sp-lbl'>Wrong −0.25ea</div></div>
-              <div class='stat-pill'><div class='sp-num' style='color:var(--green);'>{len(m_c_list)}</div><div class='sp-lbl'>Correct +1ea</div></div>
-              <div class='stat-pill'><div class='sp-num' style='color:var(--fg-muted);'>{len(m_b)}</div><div class='sp-lbl'>Blank 0pts</div></div>
-            </div>
-            """, unsafe_allow_html=True)
+            <div class="stat-row">
+              <div class="stat-pill"><div class="sp-n" style="color:var(--red);">{len(m_w)}</div><div class="sp-l">Wrong −0.25ea</div></div>
+              <div class="stat-pill"><div class="sp-n" style="color:var(--green);">{len(m_c_list)}</div><div class="sp-l">Correct +1ea</div></div>
+              <div class="stat-pill"><div class="sp-n" style="color:var(--fg2);">{len(m_b)}</div><div class="sp-l">Blank 0pts</div></div>
+            </div>""", unsafe_allow_html=True)
 
-            if m_w:
-                st.markdown(f"#### ❌ Wrong ({len(m_w)}) — Priority Review:")
-                for q in m_w:
+            for label, items_subset, show_sol in [
+                (f"❌ Wrong ({len(m_w)}) — Priority Review", m_w, True),
+                (f"✅ Correct ({len(m_c_list)})", m_c_list, False),
+                (f"⚪ Skipped ({len(m_b)})", m_b, True),
+            ]:
+                if not items_subset: continue
+                st.markdown(f"#### {label}")
+                for q in items_subset:
                     inum = q['item_number']
-                    u    = u_math.get(inum, '?')
-                    c    = q['correct_answer']
-                    top  = q.get('topic','').split(' — ')[0][:35]
-                    with st.expander(f"❌ Math {inum:02d} · {top} · Chose {u} → Correct: {c} · −0.25 pts"):
-                        st.markdown(f"**Question:** {q.get('question_text','')}")
+                    u    = u_math.get(inum)
+                    c    = q.get('correct_answer')
+                    comp = q.get('competency', q.get('topic', ''))[:60]
+                    status_str = f"Chose {u} → Correct: {c}" if u and u != c else ("✅ Correct" if u == c else "⚪ Skipped")
+                    with st.expander(f"MTH {inum:02d} · {comp} · {status_str}"):
+                        st.markdown(f"<div class='q-stem'>{q.get('question_text','')}</div>", unsafe_allow_html=True)
+                        opts = q.get('options', {})
+                        for lt in ['A','B','C','D']:
+                            txt = f"**{lt})** {render_math_text(opts.get(lt,''))}"
+                            if lt == c:
+                                st.markdown(f'<div class="ir-c">✅ {txt}</div>', unsafe_allow_html=True)
+                            elif lt == u:
+                                st.markdown(f'<div class="ir-w">❌ {txt} ← Your answer</div>', unsafe_allow_html=True)
+                            else:
+                                st.markdown(f'<div class="ir-o">{txt}</div>', unsafe_allow_html=True)
+                        da = q.get('distractor_analysis', {})
+                        if da and u and u in da and u != c:
+                            err = da[u]
+                            if isinstance(err, dict):
+                                st.warning(f"**Error ({err.get('type','')}):** {err.get('error','')}")
+                        if show_sol or u == c:
+                            sol = q.get('solution','')
+                            if sol:
+                                st.info(f"**📐 Solution:**\n\n{sol}")
+                            kc = q.get('key_concept','')
+                            if kc: st.caption(f"💡 Core concept: {kc}")
+                            cm = q.get('common_mistake','')
+                            if cm: st.caption(f"⚠️ Common mistake: {cm}")
+        ti += 1
+
+    # Science Item Review
+    if sci_items_data:
+        with tabs_r[ti]:
+            st.markdown("### 🔬 Science — Item-by-Item Review")
+            s_w = [q for q in sci_items_data if u_sci.get(q['item_number']) not in [None,''] and u_sci.get(q['item_number']) != q.get('correct_answer')]
+            s_c_list = [q for q in sci_items_data if u_sci.get(q['item_number']) == q.get('correct_answer')]
+            s_b = [q for q in sci_items_data if not u_sci.get(q['item_number'])]
+            st.markdown(f"""
+            <div class="stat-row">
+              <div class="stat-pill"><div class="sp-n" style="color:var(--red);">{len(s_w)}</div><div class="sp-l">Wrong −0.25ea</div></div>
+              <div class="stat-pill"><div class="sp-n" style="color:var(--green);">{len(s_c_list)}</div><div class="sp-l">Correct +1ea</div></div>
+              <div class="stat-pill"><div class="sp-n" style="color:var(--fg2);">{len(s_b)}</div><div class="sp-l">Blank 0pts</div></div>
+            </div>""", unsafe_allow_html=True)
+
+            for label, items_subset, show_sol in [
+                (f"❌ Wrong ({len(s_w)}) — Priority Review", s_w, True),
+                (f"✅ Correct ({len(s_c_list)})", s_c_list, False),
+                (f"⚪ Skipped ({len(s_b)})", s_b, True),
+            ]:
+                if not items_subset: continue
+                st.markdown(f"#### {label}")
+                for q in items_subset:
+                    inum = q['item_number']
+                    u    = u_sci.get(inum)
+                    c    = q.get('correct_answer')
+                    comp = q.get('competency', q.get('topic', ''))[:55]
+                    disc = q.get('science_discipline', '')
+                    status_str = f"Chose {u} → Correct: {c}" if u and u != c else ("✅ Correct" if u == c else "⚪ Skipped")
+                    with st.expander(f"SCI {inum:02d} · {comp} [{disc}] · {status_str}"):
+                        stim = q.get('stimulus','')
+                        if stim:
+                            stim_t = q.get('stimulus_type','')
+                            if stim_t == "DATA_TABLE":
+                                tbl = stim.replace('<table', '<table class="sci-tbl"')
+                                st.markdown(f'<div class="stim-data">{tbl}</div>', unsafe_allow_html=True)
+                            else:
+                                st.markdown(f'<div class="stim-passage">{stim}</div>', unsafe_allow_html=True)
+                        chart_data = q.get('chart', None)
+                        if chart_data and isinstance(chart_data, dict):
+                            try:
+                                svg = build_svg_from_data(chart_data)
+                                if svg:
+                                    st.markdown(f'<div class="chart-wrap">{svg}</div>', unsafe_allow_html=True)
+                            except Exception:
+                                pass
+                        st.markdown(f"<div class='q-stem'>{q.get('question_text','')}</div>", unsafe_allow_html=True)
                         opts = q.get('options', {})
                         for lt in ['A','B','C','D']:
                             txt = f"**{lt})** {opts.get(lt,'')}"
                             if lt == c:
-                                st.markdown(f'<div class="ir-correct">✅ {txt}</div>', unsafe_allow_html=True)
+                                st.markdown(f'<div class="ir-c">✅ {txt}</div>', unsafe_allow_html=True)
                             elif lt == u:
-                                st.markdown(f'<div class="ir-wrong">❌ {txt} ← Your answer</div>', unsafe_allow_html=True)
+                                st.markdown(f'<div class="ir-w">❌ {txt} ← Your answer</div>', unsafe_allow_html=True)
                             else:
-                                st.markdown(f'<div class="ir-option">{txt}</div>', unsafe_allow_html=True)
+                                st.markdown(f'<div class="ir-o">{txt}</div>', unsafe_allow_html=True)
                         da = q.get('distractor_analysis', {})
-                        if da and u in da:
-                            err = da[u]
-                            if isinstance(err, dict):
-                                st.warning(f"**Error type ({err.get('type','')}):** {err.get('error','')}")
-                        sol = q.get('solution', '')
-                        if sol: st.info(f"**📐 Step-by-Step Solution:**\n\n{sol}")
-                        kc = q.get('key_concept', '')
-                        if kc: st.caption(f"💡 Core concept: {kc}")
-                        cm = q.get('common_mistake_warning', '')
-                        if cm: st.caption(f"⚠️ Most common mistake: {cm}")
-
-            if m_c_list:
-                st.markdown(f"#### ✅ Correct ({len(m_c_list)}):")
-                for q in m_c_list:
-                    inum = q['item_number']
-                    c    = q['correct_answer']
-                    top  = q.get('topic','').split(' — ')[0][:35]
-                    with st.expander(f"✅ Math {inum:02d} · {top} · +1.00 pt"):
-                        st.markdown(f"**Question:** {q.get('question_text','')}")
-                        opts = q.get('options', {})
-                        for lt in ['A','B','C','D']:
-                            txt = f"**{lt})** {opts.get(lt,'')}"
-                            if lt == c: st.markdown(f'<div class="ir-correct">✅ {txt}</div>', unsafe_allow_html=True)
-                            else: st.markdown(f'<div class="ir-option">{txt}</div>', unsafe_allow_html=True)
-                        with st.expander("Show solution"):
-                            st.info(q.get('solution',''))
-
-            if m_b:
-                st.markdown(f"#### ⚪ Skipped ({len(m_b)}):")
-                for q in m_b:
-                    inum = q['item_number']
-                    c    = q['correct_answer']
-                    top  = q.get('topic','').split(' — ')[0][:35]
-                    with st.expander(f"⚪ Math {inum:02d} · {top} · 0 pts (skipped)"):
-                        st.markdown(f"**Question:** {q.get('question_text','')}")
-                        opts = q.get('options', {})
-                        for lt in ['A','B','C','D']:
-                            txt = f"**{lt})** {opts.get(lt,'')}"
-                            if lt == c: st.markdown(f'<div class="ir-correct">✅ {txt}</div>', unsafe_allow_html=True)
-                            else: st.markdown(f'<div class="ir-option">{txt}</div>', unsafe_allow_html=True)
-                        st.info(f"**Solution:**\n\n{q.get('solution','')}")
-        ti += 1
-
-    # ── SCIENCE ITEM REVIEW ──
-    if sci_items_data:
-        with tabs_r[ti]:
-            st.markdown("### 🔬 Science — Item-by-Item Review with Full Explanations")
-            s_w = [q for q in sci_items_data if u_sci.get(q['item_number']) not in [None, q['correct_answer']] and u_sci.get(q['item_number'])]
-            s_c_list = [q for q in sci_items_data if u_sci.get(q['item_number']) == q['correct_answer']]
-            s_b = [q for q in sci_items_data if u_sci.get(q['item_number']) is None]
-
-            st.markdown(f"""
-            <div class='stat-row'>
-              <div class='stat-pill'><div class='sp-num' style='color:var(--red);'>{len(s_w)}</div><div class='sp-lbl'>Wrong −0.25ea</div></div>
-              <div class='stat-pill'><div class='sp-num' style='color:var(--green);'>{len(s_c_list)}</div><div class='sp-lbl'>Correct +1ea</div></div>
-              <div class='stat-pill'><div class='sp-num' style='color:var(--fg-muted);'>{len(s_b)}</div><div class='sp-lbl'>Blank 0pts</div></div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            if s_w:
-                st.markdown(f"#### ❌ Wrong ({len(s_w)}) — Priority Review:")
-                for q in s_w:
-                    inum = q['item_number']
-                    u    = u_sci.get(inum, '?')
-                    c    = q['correct_answer']
-                    top  = q.get('topic','').split(' — ')[0][:30]
-                    disc = q.get('science_discipline','')
-                    stim_type = q.get('stimulus_type', '')
-                    with st.expander(f"❌ Sci {inum:02d} · {top} [{disc}] · Chose {u} → Correct: {c} · −0.25 pts"):
-                        stim = q.get('stimulus', '')
-                        if stim:
-                            if stim_type == "DATA_TABLE":
-                                st.markdown(f'<div class="sci-data-box">{stim}</div>', unsafe_allow_html=True)
-                            else:
-                                st.markdown(f'<div class="sci-passage">{stim}</div>', unsafe_allow_html=True)
-                        st.markdown(f"**Question:** {q.get('question_text','')}")
-                        opts = q.get('options', {})
-                        for lt in ['A','B','C','D']:
-                            txt = f"**{lt})** {opts.get(lt,'')}"
-                            if lt == c: st.markdown(f'<div class="ir-correct">✅ {txt}</div>', unsafe_allow_html=True)
-                            elif lt == u: st.markdown(f'<div class="ir-wrong">❌ {txt} ← Your answer</div>', unsafe_allow_html=True)
-                            else: st.markdown(f'<div class="ir-option">{txt}</div>', unsafe_allow_html=True)
-                        da = q.get('distractor_analysis', {})
-                        if da and u in da:
+                        if da and u and u in da and u != c:
                             err = da[u]
                             if isinstance(err, dict):
                                 st.warning(f"**Why {u} is wrong ({err.get('type','')}):** {err.get('error','')}")
-                        sol = q.get('solution','')
-                        if sol: st.info(f"**🔬 Full Explanation:**\n\n{sol}")
-                        pr = q.get('passage_reference','')
-                        if pr: st.caption(f"📍 Key stimulus data: {pr}")
-                        kc = q.get('key_concept','')
-                        if kc: st.caption(f"💡 Core concept: {kc}")
+                        if show_sol or u == c:
+                            sol = q.get('solution','')
+                            if sol: st.info(f"**🔬 Explanation:**\n\n{sol}")
+                            pr = q.get('passage_reference','')
+                            if pr: st.caption(f"📍 Key stimulus data: {pr}")
+                            kc = q.get('key_concept','')
+                            if kc: st.caption(f"💡 Core concept: {kc}")
+        ti += 1
 
-            if s_c_list:
-                st.markdown(f"#### ✅ Correct ({len(s_c_list)}):")
-                for q in s_c_list:
-                    inum = q['item_number']
-                    c    = q['correct_answer']
-                    top  = q.get('topic','').split(' — ')[0][:30]
-                    with st.expander(f"✅ Sci {inum:02d} · {top} · +1.00 pt"):
-                        stim = q.get('stimulus','')
-                        if stim:
-                            if q.get('stimulus_type') == "DATA_TABLE":
-                                st.markdown(f'<div class="sci-data-box" style="max-height:120px;overflow:auto;">{stim}</div>', unsafe_allow_html=True)
-                            else:
-                                st.markdown(f'<div class="sci-passage" style="max-height:100px;">{stim}</div>', unsafe_allow_html=True)
-                        st.markdown(f"**Question:** {q.get('question_text','')}")
-                        opts = q.get('options', {})
-                        for lt in ['A','B','C','D']:
-                            txt = f"**{lt})** {opts.get(lt,'')}"
-                            if lt == c: st.markdown(f'<div class="ir-correct">✅ {txt}</div>', unsafe_allow_html=True)
-                            else: st.markdown(f'<div class="ir-option">{txt}</div>', unsafe_allow_html=True)
-                        with st.expander("Show full explanation"):
-                            st.info(q.get('solution',''))
-
-            if s_b:
-                st.markdown(f"#### ⚪ Skipped ({len(s_b)}):")
-                for q in s_b:
-                    inum = q['item_number']
-                    c    = q['correct_answer']
-                    top  = q.get('topic','').split(' — ')[0][:30]
-                    with st.expander(f"⚪ Sci {inum:02d} · {top} · 0 pts"):
-                        stim = q.get('stimulus','')
-                        if stim:
-                            st.markdown(f'<div class="sci-passage" style="max-height:100px;">{stim}</div>', unsafe_allow_html=True)
-                        st.markdown(f"**Question:** {q.get('question_text','')}")
-                        opts = q.get('options', {})
-                        for lt in ['A','B','C','D']:
-                            txt = f"**{lt})** {opts.get(lt,'')}"
-                            if lt == c: st.markdown(f'<div class="ir-correct">✅ {txt}</div>', unsafe_allow_html=True)
-                            else: st.markdown(f'<div class="ir-option">{txt}</div>', unsafe_allow_html=True)
-                        st.info(f"**Explanation:**\n\n{q.get('solution','')}")
+    # Recon & DPWAS
+    with tabs_r[ti]:
+        st.markdown("### ⚖️ DPWAS, Reconsideration & Cascading Admission")
+        st.markdown(f"""
+        <div class="notice">
+          <span class="ni">📋</span>
+          <div>
+            <strong>UPCAT 2025:</strong> 17,996 admission notices of 135,236 applicants (13.3%).
+            ~10,600 were direct degree-program qualifiers (~7.8%). ~7,400 were DPWAS (waitlisted).
+            Being waitlisted is NOT rejection — slots open as accepted students decline or fail to enroll.<br><br>
+            <strong>Cascading:</strong> If qualified at Campus 1 → Campus 2 is void.
+            If failed all programs at Campus 1 → cascade to Campus 2.
+            Program slots filled by UPG rank within each campus.
+          </div>
+        </div>""", unsafe_allow_html=True)
+        for campus in [campus_1, campus_2]:
+            recon  = CAMPUS_DATA[campus]["recon"]
+            cutoff = CAMPUS_DATA[campus]["cutoff"]
+            st.markdown(f"**{campus}** — Cutoff: `{cutoff:.3f}` · Recon ceiling: `{f'{recon:.3f}' if recon > 0 else 'N/A'}`")
+            if recon == 0.0:
+                st.error(f"🚫 {campus}: Absolute no-appeal policy. No reconsideration.")
+            elif final_upg <= cutoff:
+                st.success(f"✅ Qualified ({final_upg:.3f} ≤ {cutoff:.3f}). No recon needed.")
+            elif final_upg <= recon:
+                st.warning(f"📋 Recon-eligible: UPG {final_upg:.3f} within window ({cutoff:.3f}–{recon:.3f}). Not guaranteed — subject to slot availability.")
+            else:
+                st.error(f"❌ UPG {final_upg:.3f} exceeds recon ceiling {recon:.3f}.")
 
     # ── RESET ──
     st.markdown("<br><br>", unsafe_allow_html=True)
     rc1, rc2, rc3 = st.columns([1,2,1])
     with rc2:
-        st.markdown("""
-        <div style='text-align:center;font-family:var(--font-body);font-size:0.80rem;color:var(--fg-muted);margin-bottom:10px;'>
-          Generate a fresh set of items — all sidebar settings are preserved.
+        st.markdown("""<div style='text-align:center;font-family:var(--font-body);font-size:0.8rem;color:var(--fg2);margin-bottom:10px;'>
+          Generate a fresh set of items — competencies and sidebar settings preserved.
         </div>""", unsafe_allow_html=True)
         if st.button("🔄 Generate Fresh Items & Reset", use_container_width=True, type="secondary"):
-            for k in ['user_answers_math','user_answers_sci','submitted','test_data',
-                      'flagged_items','math_started','sci_started','math_submitted','sci_submitted',
+            for k in ['user_answers_math','user_answers_sci','submitted','test_data','flagged_items',
                       'math_start_time','sci_start_time','elapsed_math','elapsed_sci']:
                 if k in st.session_state: del st.session_state[k]
             st.rerun()
