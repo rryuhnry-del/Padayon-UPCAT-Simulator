@@ -479,17 +479,28 @@ def build_chart(cd):
 # ==========================================
 # JSON CLEANER — never touch backslashes
 # ==========================================
+# ==========================================
+# JSON CLEANER — THE MATH VACCINE
+# ==========================================
 def clean_json(raw: str) -> str:
-    """Extract valid JSON without touching LaTeX backslashes."""
+    """Extract valid JSON and sanitize LaTeX backslashes."""
     s = raw.strip()
     # Remove markdown code fences only
     s = re.sub(r'^```(?:json)?\s*\n?', '', s, flags=re.IGNORECASE)
     s = re.sub(r'\n?```\s*$', '', s)
     s = s.strip()
+    
     # Find outermost object
     first, last = s.find('{'), s.rfind('}')
     if first != -1 and last != -1:
         s = s[first:last+1]
+        
+    # THE MATH VACCINE: Escape raw backslashes so JSON parser doesn't crash on \frac or \sqrt
+    s = s.replace('\\', '\\\\')
+    s = s.replace('\\\\"', '\\"')  # Restore legitimate JSON quote escapes
+    s = s.replace('\\\\n', '\\n')  # Restore legitimate JSON newlines
+    s = s.replace('\\\\t', '\\t')  # Restore legitimate JSON tabs
+    
     return s.strip()
 
 def esc_html(s: str) -> str:
