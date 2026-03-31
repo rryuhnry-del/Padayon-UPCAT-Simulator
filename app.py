@@ -1071,29 +1071,30 @@ def generate_line_chart_svg(x_vals, y_series, title="", width=500, height=280):
 # JSON & LATEX HELPERS
 # ==========================================
 def clean_json(raw: str) -> str:
-    """Robustly extract and clean JSON from model output."""
+    """Super-Sanitizer: Engineered for Math, Science, and LaTeX JSON escapes"""
+    import re
     s = raw.strip()
-    # Remove code fences
-    for fence in ["```json", "```JSON", "```"]:
-        if s.startswith(fence):
-            s = s[len(fence):]
-    if s.endswith("```"):
-        s = s[:-3]
-    # Find outermost braces
-    start = s.find("{")
-    if start == -1:
-        return s.strip()
-    # Find matching closing brace
-    depth = 0
-    end = start
-    for i, c in enumerate(s[start:], start):
-        if c == "{": depth += 1
-        elif c == "}":
-            depth -= 1
-            if depth == 0:
-                end = i
-                break
-    return s[start:end+1].strip()
+    
+    # 1. Remove Markdown Fences
+    s = re.sub(r'^```json\s*|```JSON\s*|```$', '', s, flags=re.IGNORECASE | re.MULTILINE)
+    
+    # 2. Fix the "Invalid \escape" by escaping raw backslashes used in Math/LaTeX
+    # This is the 'vaccine' for your Math LaTeX error
+    s = s.replace('\\', '\\\\') 
+    s = s.replace('\\\\"', '\\"')  # Restore escaped quotes
+    s = s.replace('\\\\n', '\\n')  # Restore newlines
+    s = s.replace('\\\\t', '\\t')  # Restore tabs
+    
+    # 3. Aggressive repair for unescaped newlines inside strings
+    s = re.sub(r'([^\\])\n', r'\1\\n', s)
+    
+    # 4. Extract the JSON core
+    first = s.find("{")
+    last = s.rfind("}")
+    if first != -1 and last != -1:
+        s = s[first:last+1]
+        
+    return s.strip()
 
 def render_math_text(text: str) -> str:
     """Ensure math text renders properly — strip erroneous markdown bold from options."""
