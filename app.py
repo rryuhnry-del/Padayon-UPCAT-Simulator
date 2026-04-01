@@ -516,6 +516,26 @@ def esc_html(s: str) -> str:
     """HTML-escape user strings to prevent injection."""
     return str(s).replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;')
 
+def render_stimulus(stim_str, stim_type):
+    """Smart stimulus renderer — auto-detects HTML tables regardless of stimulus_type label."""
+    if not stim_str:
+        return
+    s = str(stim_str)
+    has_html = bool(re.search(r'<(table|thead|tbody|tr|td|th)\b', s, re.IGNORECASE))
+    
+    if stim_type == "DATA_TABLE" or has_html:
+        st.markdown('<span class="stim-label d">📊 Experimental Data / Table</span>', unsafe_allow_html=True)
+        # Wrap in stim-data div for styling; render HTML directly
+        st.markdown(f'<div class="stim-data">{s}</div>', unsafe_allow_html=True)
+    elif stim_type == "DIAGRAM":
+        st.markdown('<span class="stim-label g">🔎 Diagram / Figure</span>', unsafe_allow_html=True)
+        # Use markdown so KaTeX renders arrows/symbols; wrap in styled div
+        st.markdown(f'<div class="stim-diagram">{safe_md(s)}</div>', unsafe_allow_html=True)
+    else:
+        # TEXT_PASSAGE — styled blockquote-like box
+        st.markdown('<span class="stim-label p">📄 Read the passage carefully before answering:</span>', unsafe_allow_html=True)
+        st.markdown(f'<div class="stim-passage">{safe_md(s)}</div>', unsafe_allow_html=True)
+
 def post_process(items):
     for q in items:
         # Correct answer: single uppercase letter
@@ -945,18 +965,9 @@ if st.session_state.get('test_data') and not st.session_state.get('submitted'):
 
                 st.markdown(f'<div class="{card_cls}" id="{key}_{inum}"><div class="q-meta">{badge_html}</div>', unsafe_allow_html=True)
 
-               # ── 1. STIMULUS (Native Markdown for Tables & Math) ──
+              # ── 1. STIMULUS (Smart renderer — handles tables in any stimulus_type) ──
                 if stimulus:
-                    stim_str = str(stimulus)
-                    if stim_type == "DATA_TABLE":
-                        st.markdown('<div class="stim-label d">📊 Experimental Data / Table</div>', unsafe_allow_html=True)
-                        st.markdown(stim_str, unsafe_allow_html=True)
-                    elif stim_type == "DIAGRAM":
-                        st.markdown('<div class="stim-label g">🔎 Diagram / Figure</div>', unsafe_allow_html=True)
-                        st.info(safe_md(stim_str))
-                    else:
-                        st.markdown('<div class="stim-label p">📄 Read the passage carefully before answering:</div>', unsafe_allow_html=True)
-                        st.info(safe_md(stim_str))
+                    render_stimulus(str(stimulus), stim_type)
 
                 # ── 2. CHART ──
                 if chart_d and isinstance(chart_d, dict):
@@ -1292,13 +1303,9 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
                     ss   = f"Chose {u} → Correct: {c}" if u and u!=c else ("✅ Correct" if u==c else "⚪ Skipped")
                     
                     with st.expander(f"SCI {inum:02d} · {comp} [{disc}] · {ss}"):
-                        stim = q.get('stimulus','')
+                       stim = q.get('stimulus','')
                         if stim:
-                            if q.get('stimulus_type','') == "DATA_TABLE":
-                                st.markdown('<div class="stim-label d">📊 Data Table</div>', unsafe_allow_html=True)
-                                st.markdown(str(stim), unsafe_allow_html=True)
-                            else:
-                                st.info(safe_md(str(stim)))
+                            render_stimulus(str(stim), q.get('stimulus_type',''))
                         
                         cd = q.get('chart')
                         if cd and isinstance(cd, dict):
