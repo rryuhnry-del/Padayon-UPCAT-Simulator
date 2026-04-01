@@ -1271,6 +1271,7 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
         ti+=1
 
     # ── SCIENCE REVIEW ──
+    # ── SCIENCE REVIEW TAB ──
     if sci_data:
         with tabs_r[ti]:
             st.markdown("### 🔬 Science — Item Review")
@@ -1278,21 +1279,22 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
             sc_l=[q for q in sci_data if u_sci.get(q['item_number'])==q.get('correct_answer')]
             sb_l=[q for q in sci_data if not u_sci.get(q['item_number'])]
             st.markdown(f'<div class="stat-row"><div class="stat-pill"><div class="sp-n" style="color:var(--red);">{len(sw_l)}</div><div class="sp-l">Wrong</div></div><div class="stat-pill"><div class="sp-n" style="color:var(--green);">{len(sc_l)}</div><div class="sp-l">Correct</div></div><div class="stat-pill"><div class="sp-n" style="color:var(--fg2);">{len(sb_l)}</div><div class="sp-l">Blank</div></div></div>',unsafe_allow_html=True)
-            for lbl,subset,show_sol in [(f"❌ Wrong ({len(sw_l)}) — Priority",sw_l,True),(f"✅ Correct ({len(sc_l)})",sc_l,False),(f"⚪ Skipped ({len(sb_l)})",sb_l,True)]:
+            
+            for lbl, subset, show_sol in [(f"❌ Wrong ({len(sw_l)}) — Priority", sw_l, True), (f"✅ Correct ({len(sc_l)})", sc_l, False), (f"⚪ Skipped ({len(sb_l)})", sb_l, True)]:
                 if not subset: continue
                 st.markdown(f"#### {lbl}")
-               for q in subset:
+                for q in subset:
                     inum = q['item_number']
                     u    = u_sci.get(inum)
                     c    = q.get('correct_answer')
                     comp = q.get('competency', q.get('topic',''))[:50]
                     disc = q.get('science_discipline','')
                     ss   = f"Chose {u} → Correct: {c}" if u and u!=c else ("✅ Correct" if u==c else "⚪ Skipped")
+                    
                     with st.expander(f"SCI {inum:02d} · {comp} [{disc}] · {ss}"):
                         stim = q.get('stimulus','')
                         if stim:
-                            st_type = q.get('stimulus_type','')
-                            if st_type == "DATA_TABLE":
+                            if q.get('stimulus_type','') == "DATA_TABLE":
                                 st.markdown('<div class="stim-label d">📊 Data Table</div>', unsafe_allow_html=True)
                                 st.markdown(str(stim), unsafe_allow_html=True)
                             else:
@@ -1304,7 +1306,7 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
                                 svg = build_chart(cd)
                                 if svg: st.markdown(f'<div class="chart-wrap">{svg}</div>', unsafe_allow_html=True)
                             except Exception: pass
-                            
+                        
                         st.markdown(f"**Question:**\n\n{safe_md(q.get('question_text',''))}")
                         opts = q.get('options',{})
                         for lt in ['A','B','C','D']:
@@ -1312,12 +1314,12 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
                             if lt == c: st.markdown(f'<div class="ir-c">✅ {txt}</div>', unsafe_allow_html=True)
                             elif lt == u: st.markdown(f'<div class="ir-w">❌ {txt} ← Your answer</div>', unsafe_allow_html=True)
                             else: st.markdown(f'<div class="ir-o">{txt}</div>', unsafe_allow_html=True)
-                            
+                        
                         da = q.get('distractor_analysis',{})
                         if da and u and u in da and u != c:
                             err = da[u]
                             if isinstance(err, dict): st.warning(f"**Why {u} is wrong ({err.get('type','')}):** {err.get('error','')}")
-                            
+                        
                         if show_sol or u == c:
                             sol = q.get('solution','')
                             if sol: st.info(f"**🔬 Explanation:**\n\n{safe_md(sol)}")
@@ -1325,8 +1327,7 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
                             if pr: st.caption(f"📍 Key evidence: {pr}")
                             kc = q.get('key_concept','')
                             if kc: st.caption(f"💡 {kc}")
-        ti+=1
-
+        ti += 1
     with tabs_r[ti]:
         st.markdown("### ⚖️ DPWAS, Reconsideration & Cascading Admission")
         st.markdown(f"""<div class="notice"><span class="ni">📋</span><div>
