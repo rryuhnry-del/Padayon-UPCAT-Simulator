@@ -1281,12 +1281,15 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
             for lbl,subset,show_sol in [(f"❌ Wrong ({len(sw_l)}) — Priority",sw_l,True),(f"✅ Correct ({len(sc_l)})",sc_l,False),(f"⚪ Skipped ({len(sb_l)})",sb_l,True)]:
                 if not subset: continue
                 st.markdown(f"#### {lbl}")
-                for q in subset:
-                    inum=q['item_number']; u=u_sci.get(inum); c=q.get('correct_answer')
-                    comp=q.get('competency',q.get('topic',''))[:50]; disc=q.get('science_discipline','')
-                    ss=f"Chose {u} → Correct: {c}" if u and u!=c else ("✅ Correct" if u==c else "⚪ Skipped")
+               for q in subset:
+                    inum = q['item_number']
+                    u    = u_sci.get(inum)
+                    c    = q.get('correct_answer')
+                    comp = q.get('competency', q.get('topic',''))[:50]
+                    disc = q.get('science_discipline','')
+                    ss   = f"Chose {u} → Correct: {c}" if u and u!=c else ("✅ Correct" if u==c else "⚪ Skipped")
                     with st.expander(f"SCI {inum:02d} · {comp} [{disc}] · {ss}"):
-                       stim = q.get('stimulus','')
+                        stim = q.get('stimulus','')
                         if stim:
                             st_type = q.get('stimulus_type','')
                             if st_type == "DATA_TABLE":
