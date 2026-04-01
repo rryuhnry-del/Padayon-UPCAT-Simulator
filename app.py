@@ -1303,16 +1303,13 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
                     ss   = f"Chose {u} → Correct: {c}" if u and u!=c else ("✅ Correct" if u==c else "⚪ Skipped")
                     
                     with st.expander(f"SCI {inum:02d} · {comp} [{disc}] · {ss}"):
-                       stim = q.get('stimulus','')
+                        stim = q.get('stimulus','')
                         if stim:
                             render_stimulus(str(stim), q.get('stimulus_type',''))
                         
                         cd = q.get('chart')
                         if cd and isinstance(cd, dict):
-                            try:
-                                svg = build_chart(cd)
-                                if svg: st.markdown(f'<div class="chart-wrap">{svg}</div>', unsafe_allow_html=True)
-                            except Exception: pass
+                            ...
                         
                         st.markdown(f"**Question:**\n\n{safe_md(q.get('question_text',''))}")
                         opts = q.get('options',{})
