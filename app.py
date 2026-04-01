@@ -552,6 +552,19 @@ UPCAT MATH STYLE:
 - Options must be parallel in form and similar in length — no obvious outliers
 - Correct answer must be defensible from the question alone
 
+THE "ALIEN ITEM" ILLUSION PROTOCOL (30% of questions):
+- Inject "Alien Items": These are questions masked in highly intimidating, seemingly out-of-coverage, or bizarre scenarios. 
+- Use intimidating numbers (e.g., $2026^2 - 2025^2$, $10^{99} - 1$, nested infinite radicals, fractional exponents of massive bases).
+- Use distinct, wide-ranging contexts (e.g., cryptography algorithms, orbital mechanics, abstract economics).
+- THE CATCH: The mathematical complexity MUST be an illusion. The item must collapse into a beautifully simple K-12 concept (like difference of two squares, exponent rules, similar triangles, or factoring) that can be solved mentally in under 90 seconds.
+- DO NOT make it overly absurd or unsolvable. It must strictly map to the given competencies.
+
+STRICT PSYCHOMETRIC TRIFECTA STANDARDS:
+1. VALIDITY: The item must measure EXACTLY the mathematical competency required, not the student's reading comprehension or patience for long division.
+2. RELIABILITY: The difficulty must be consistent. A student with strong algebraic foundations will instantly see the "shortcut" trick, while an unprepared student will try to calculate it manually and fail/run out of time.
+3. OBJECTIVITY: There is only ONE mathematically undeniable correct answer. Distractors must be the exact values obtained if a student falls for the illusion (e.g., computing normally and making an arithmetic error, or applying the wrong shortcut).
+
+
 OUTPUT: Return ONLY valid JSON. No markdown fences. No text before or after."""
 
 SCI_SYSTEM = """You are a senior UPCAT Science item writer for the University of the Philippines Office of Admissions.
@@ -577,6 +590,20 @@ UPCAT SCIENCE STYLE:
 - CRITICAL: Never omit curly braces in LaTeX. Always write \frac{a}{b}, never \fracab.
 - Always put a space after a LaTeX command if it's followed by a variable. 
 - Example: \cos (5x) is better than \cos(5x).
+
+THE "ALIEN ITEM" ILLUSION PROTOCOL (30% of questions):
+- Inject "Alien Items": Wrap basic K-12 science competencies in highly intimidating, alien, or niche scientific contexts.
+- Wide Contexts & Vocabulary: Use deep-sea hydrothermal vents, exoplanet atmospheric spectra, rare genetic mutations (like *Xeroderma pigmentosum*), or terrifying chemical nomenclature (e.g., *dichloro-diphenyl-trichloroethane*).
+- THE CATCH: The core science required to solve it MUST be standard K-12 curriculum. The alien vocabulary is just a wrapper to test "Panic Control" and "Data Extraction." For example, a terrifying organic chemistry compound question should simply require identifying the number of covalent bonds or electronegativity trends.
+- The item must be fully solvable within the 60-second time budget. If the student understands the basic principle, the alien context shouldn't slow them down.
+- Zero repeating contexts. Ensure massive diversity in species, ecosystems, chemical reactions, and physical setups.
+
+STRICT PSYCHOMETRIC TRIFECTA STANDARDS:
+1. VALIDITY: The item must test the exact target MELC (competency). The alien context must NOT interfere with the scientific truth being measured.
+2. RELIABILITY: A well-prepared student will pierce through the jargon and identify the basic principle (e.g., osmosis, Newton's 3rd Law, periodic trends). An unprepared student will guess blindly out of intimidation.
+3. OBJECTIVITY: There must be ONE scientifically absolute correct answer. Distractors must target students who misinterpret the alien data or panic and choose a "smart-sounding" but factually wrong scientific term.
+
+
 
 OUTPUT: Return ONLY valid JSON. No markdown fences. No text before or after."""
 
