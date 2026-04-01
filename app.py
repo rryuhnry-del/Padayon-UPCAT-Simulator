@@ -482,6 +482,14 @@ def build_chart(cd):
 # ==========================================
 # JSON CLEANER — THE MATH VACCINE
 # ==========================================
+# ==========================================
+# JSON CLEANER & MARKDOWN SAFEGUARD
+# ==========================================
+def safe_md(text):
+    """Protects Math/LaTeX backslashes from being eaten by Streamlit"""
+    if not text: return ""
+    return str(text).replace('\\', '\\\\')
+
 def clean_json(raw: str) -> str:
     """High-Precision JSON Extractor for LaTeX and Math Symbols"""
     import re
@@ -937,44 +945,40 @@ if st.session_state.get('test_data') and not st.session_state.get('submitted'):
 
                 st.markdown(f'<div class="{card_cls}" id="{key}_{inum}"><div class="q-meta">{badge_html}</div>', unsafe_allow_html=True)
 
-                # Stimulus
+               # ── 1. STIMULUS (Native Markdown for Tables & Math) ──
                 if stimulus:
-                    stim_str=str(stimulus)
-                    if stim_type=="DATA_TABLE":
-                        stim_str=re.sub(r'<table[^>]*>','<table class="sci-tbl">',stim_str)
-                        st.markdown(f'<div class="stim-data"><span class="stim-label d">📊 Data Table — read before answering</span>{stim_str}</div>',unsafe_allow_html=True)
-                    elif stim_type=="DIAGRAM":
-                        st.markdown(f'<div class="stim-diagram"><span class="stim-label g">🔎 Diagram / Figure</span>{esc_html(stim_str)}</div>',unsafe_allow_html=True)
+                    stim_str = str(stimulus)
+                    if stim_type == "DATA_TABLE":
+                        st.markdown('<div class="stim-label d">📊 Experimental Data / Table</div>', unsafe_allow_html=True)
+                        st.markdown(stim_str, unsafe_allow_html=True)
+                    elif stim_type == "DIAGRAM":
+                        st.markdown('<div class="stim-label g">🔎 Diagram / Figure</div>', unsafe_allow_html=True)
+                        st.info(safe_md(stim_str))
                     else:
-                        st.markdown(f'<div class="stim-passage"><span class="stim-label p">📄 Read the passage carefully before answering</span>{stim_str}</div>',unsafe_allow_html=True)
+                        st.markdown('<div class="stim-label p">📄 Read the passage carefully before answering:</div>', unsafe_allow_html=True)
+                        st.info(safe_md(stim_str))
 
-                # Chart
-                if chart_d and isinstance(chart_d,dict):
+                # ── 2. CHART ──
+                if chart_d and isinstance(chart_d, dict):
                     try:
-                        svg=build_chart(chart_d)
-                        if svg: st.markdown(f'<div class="chart-wrap">{svg}</div>',unsafe_allow_html=True)
+                        svg = build_chart(chart_d)
+                        if svg: st.markdown(f'<div class="chart-wrap">{svg}</div>', unsafe_allow_html=True)
                     except Exception: pass
 
-                # Question text — use native st.markdown (KaTeX auto-renders $...$)
-                st.markdown(f'<div style="font-family:var(--font-body);font-size:var(--fs);line-height:1.9;color:var(--fg0);margin:0 0 14px;">', unsafe_allow_html=True)
-# ── QUESTION TEXT (Math-Safe Rendering) ──
-                # We wrap the text to ensure Streamlit treats backslashes literally
-                st.write(qtext) 
-                st.markdown("---")
-                st.markdown('</div>', unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                # ── 3. QUESTION TEXT ──
+                st.markdown(f"**{safe_md(qtext)}**")
 
-                # Options — native st.radio, text passed as-is so KaTeX renders $...$
-                opts=q.get('options',{})
-                choices=[
-                    f"A)  {opts.get('A','')}",
-                    f"B)  {opts.get('B','')}",
-                    f"C)  {opts.get('C','')}",
-                    f"D)  {opts.get('D','')}",
+                # ── 4. OPTIONS (With Math Protection) ──
+                opts = q.get('options', {})
+                choices =[
+                    f"A)  {safe_md(opts.get('A',''))}",
+                    f"B)  {safe_md(opts.get('B',''))}",
+                    f"C)  {safe_md(opts.get('C',''))}",
+                    f"D)  {safe_md(opts.get('D',''))}",
                 ]
-                choice=st.radio(f"Q{key}{inum}",choices,key=f"{key}_r_{inum}",index=None,label_visibility="collapsed")
+                choice = st.radio(f"Q{key}{inum}", choices, key=f"{key}_r_{inum}", index=None, label_visibility="collapsed")
                 if choice:
-                    st.session_state[ans_key][inum]=choice.strip()[0].upper()
+                    st.session_state[ans_key][inum] = choice.strip()[0].upper()
 
                 if enable_flag:
                     fkey=f"{key}_{inum}"
@@ -1244,25 +1248,25 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
                     comp=q.get('competency',q.get('topic',''))[:55]
                     ss=f"Chose {u} → Correct: {c}" if u and u!=c else ("✅ Correct" if u==c else "⚪ Skipped")
                     with st.expander(f"MTH {inum:02d} · {comp} · {ss}"):
-                        # Use st.markdown natively — KaTeX auto-renders
-                        st.markdown(f"**Question:** {q.get('question_text','')}")
-                        opts=q.get('options',{})
-                        for lt in ['A','B','C','D']:
-                            txt=f"**{lt})** {opts.get(lt,'')}"
-                            if lt==c: st.markdown(f'<div class="ir-c">✅ {txt}</div>',unsafe_allow_html=True)
-                            elif lt==u: st.markdown(f'<div class="ir-w">❌ {txt} ← Your answer</div>',unsafe_allow_html=True)
-                            else: st.markdown(f'<div class="ir-o">{txt}</div>',unsafe_allow_html=True)
-                        da=q.get('distractor_analysis',{})
-                        if da and u and u in da and u!=c:
-                            err=da[u]
-                            if isinstance(err,dict): st.warning(f"**Error ({err.get('type','')}):** {err.get('error','')}")
+                       # Native Question and Options rendering for Math
+                        st.markdown(f"**Question:**\n\n{safe_md(q.get('question_text',''))}")
+                        opts = q.get('options',{})
+                        for lt in['A','B','C','D']:
+                            txt = f"**{lt})** {safe_md(opts.get(lt,''))}"
+                            if lt == c: st.markdown(f'<div class="ir-c">✅ {txt}</div>', unsafe_allow_html=True)
+                            elif lt == u: st.markdown(f'<div class="ir-w">❌ {txt} ← Your answer</div>', unsafe_allow_html=True)
+                            else: st.markdown(f'<div class="ir-o">{txt}</div>', unsafe_allow_html=True)
+                        da = q.get('distractor_analysis',{})
+                        if da and u and u in da and u != c:
+                            err = da[u]
+                            if isinstance(err, dict): st.warning(f"**Error ({err.get('type','')}):** {err.get('error','')}")
                             else: st.warning(str(err))
-                        if show_sol or u==c:
-                            sol=q.get('solution','')
-                            if sol: st.info(f"**📐 Solution:**\n\n{sol}")
-                            kc=q.get('key_concept','')
+                        if show_sol or u == c:
+                            sol = q.get('solution','')
+                            if sol: st.info(f"**📐 Solution:**\n\n{safe_md(sol)}")
+                            kc = q.get('key_concept','')
                             if kc: st.caption(f"💡 {kc}")
-                            cm=q.get('common_mistake','')
+                            cm = q.get('common_mistake','')
                             if cm: st.caption(f"⚠️ Common mistake: {cm}")
         ti+=1
 
@@ -1282,37 +1286,41 @@ if st.session_state.get('submitted') and st.session_state.get('test_data'):
                     comp=q.get('competency',q.get('topic',''))[:50]; disc=q.get('science_discipline','')
                     ss=f"Chose {u} → Correct: {c}" if u and u!=c else ("✅ Correct" if u==c else "⚪ Skipped")
                     with st.expander(f"SCI {inum:02d} · {comp} [{disc}] · {ss}"):
-                        stim=q.get('stimulus','')
+                       stim = q.get('stimulus','')
                         if stim:
-                            st_type=q.get('stimulus_type','')
-                            if st_type=="DATA_TABLE":
-                                clean=re.sub(r'<table[^>]*>','<table class="sci-tbl">',str(stim))
-                                st.markdown(f'<div class="stim-data">{clean}</div>',unsafe_allow_html=True)
+                            st_type = q.get('stimulus_type','')
+                            if st_type == "DATA_TABLE":
+                                st.markdown('<div class="stim-label d">📊 Data Table</div>', unsafe_allow_html=True)
+                                st.markdown(str(stim), unsafe_allow_html=True)
                             else:
-                                st.markdown(f'<div class="stim-passage">{stim}</div>',unsafe_allow_html=True)
-                        cd=q.get('chart')
-                        if cd and isinstance(cd,dict):
+                                st.info(safe_md(str(stim)))
+                        
+                        cd = q.get('chart')
+                        if cd and isinstance(cd, dict):
                             try:
-                                svg=build_chart(cd)
-                                if svg: st.markdown(f'<div class="chart-wrap">{svg}</div>',unsafe_allow_html=True)
+                                svg = build_chart(cd)
+                                if svg: st.markdown(f'<div class="chart-wrap">{svg}</div>', unsafe_allow_html=True)
                             except Exception: pass
-                        st.markdown(f"**Question:** {q.get('question_text','')}")
-                        opts=q.get('options',{})
+                            
+                        st.markdown(f"**Question:**\n\n{safe_md(q.get('question_text',''))}")
+                        opts = q.get('options',{})
                         for lt in ['A','B','C','D']:
-                            txt=f"**{lt})** {opts.get(lt,'')}"
-                            if lt==c: st.markdown(f'<div class="ir-c">✅ {txt}</div>',unsafe_allow_html=True)
-                            elif lt==u: st.markdown(f'<div class="ir-w">❌ {txt} ← Your answer</div>',unsafe_allow_html=True)
-                            else: st.markdown(f'<div class="ir-o">{txt}</div>',unsafe_allow_html=True)
-                        da=q.get('distractor_analysis',{})
-                        if da and u and u in da and u!=c:
-                            err=da[u]
-                            if isinstance(err,dict): st.warning(f"**Why {u} is wrong ({err.get('type','')}):** {err.get('error','')}")
-                        if show_sol or u==c:
-                            sol=q.get('solution','')
-                            if sol: st.info(f"**🔬 Explanation:**\n\n{sol}")
-                            pr=q.get('passage_reference','')
+                            txt = f"**{lt})** {safe_md(opts.get(lt,''))}"
+                            if lt == c: st.markdown(f'<div class="ir-c">✅ {txt}</div>', unsafe_allow_html=True)
+                            elif lt == u: st.markdown(f'<div class="ir-w">❌ {txt} ← Your answer</div>', unsafe_allow_html=True)
+                            else: st.markdown(f'<div class="ir-o">{txt}</div>', unsafe_allow_html=True)
+                            
+                        da = q.get('distractor_analysis',{})
+                        if da and u and u in da and u != c:
+                            err = da[u]
+                            if isinstance(err, dict): st.warning(f"**Why {u} is wrong ({err.get('type','')}):** {err.get('error','')}")
+                            
+                        if show_sol or u == c:
+                            sol = q.get('solution','')
+                            if sol: st.info(f"**🔬 Explanation:**\n\n{safe_md(sol)}")
+                            pr = q.get('passage_reference','')
                             if pr: st.caption(f"📍 Key evidence: {pr}")
-                            kc=q.get('key_concept','')
+                            kc = q.get('key_concept','')
                             if kc: st.caption(f"💡 {kc}")
         ti+=1
 
